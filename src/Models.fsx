@@ -1,6 +1,6 @@
 namespace Models
 
-open System
+open System.Collections.Generic
 
 module Models = 
     type Tweet = {
@@ -15,10 +15,14 @@ module Models =
         Handle: string;
         FirstName: string;
         LastName: string;
-        TweetHead: Tweet;
-        FollowingTo: Set<int>;
-        HashtagsFollowed: Set<string>;
+        TweetHead: Tweet option;
+        FollowingTo: HashSet<int>;
+        HashtagsFollowed: HashSet<string>;
     }
+
+    type InitClient = {
+        NumberOfUsers: int;
+    } 
 
     type RegisterUserRequest = {
         Handle: string;
@@ -26,9 +30,21 @@ module Models =
         LastName: string;
     }
 
+    type RegisterUserResponse = {
+        Id: int;
+        Handle: string;
+        FirstName: string;
+        LastName: string;
+        Success: bool;
+    }
+
     type FollowUserRequest = {
         FollowerId: int;
         FolloweeId: int;
+    }
+
+    type FollowUserResponse = {
+        Success: bool;
     }
 
     type UnfollowUserRequest = {
@@ -36,9 +52,17 @@ module Models =
         FolloweeId: int;
     }
 
+    type UnfollowUserResponse = {
+        Success: bool;
+    }
+
     type PostTweetRequest = {
         UserId: int;
         TweetContent: string;
+    }
+
+    type PostTweetResponse = {
+        Success: bool;
     }
 
     type RetweetRequest = {
@@ -46,30 +70,73 @@ module Models =
         TweetId: int;
     }
 
+    type RetweetResponse = {
+        Success: bool;
+    }
+
     type GetFeedRequest = {
         UserId: int
+    }
+
+    type GetFeedResponse = {
+        Success: bool;
     }
 
     type GetMentionTweetsRequest = {
         UserId: int;
     }
 
+    type GetMentionTweetsResponse = {
+        Success: bool;
+    }
+
     type GetHashtagTweetsRequest = {
-        Hashtags: Set<string>;
+        Hashtags: HashSet<string>;
+    }
+
+    type GetHashtagTweetsResponse = {
+        Success: bool;
     }
 
     type GetFollowersTweetsRequest = {
         UserId: int;
     }
 
-    type ServerRequestType = 
-        | RegisterUser of RegisterUserRequest
-        | FollowUser of FollowUserRequest
-        | UnfollowUser of UnfollowUserRequest
-        | PostTweet of PostTweetRequest
-        | Retweet of RetweetRequest
-        | GetFeed of GetFeedRequest
-        | GetMentionTweets of GetMentionTweetsRequest
-        | GetHashtagTweets of GetHashtagTweetsRequest
-        | GetFollowersTweets of GetFollowersTweetsRequest
+    type GetFollowersTweetsResponse = {
+        Success: bool;
+    }
 
+    type MessageType = 
+        | InitClient of InitClient
+
+        | GenerateUsers
+        | GenerateUserSuccess
+        
+        | GenerateFollowers
+
+        | RegisterUserRequest of RegisterUserRequest
+        | RegisterUserResponse of RegisterUserResponse
+
+        | FollowUserRequest of FollowUserRequest
+        | FollowUserResponse of FollowUserResponse
+        
+        | UnfollowUserRequest of UnfollowUserRequest
+        | UnfollowUserResponse of UnfollowUserResponse
+        
+        | PostTweetRequest of PostTweetRequest
+        | PostTweetResponse of PostTweetResponse
+        
+        | RetweetRequest of RetweetRequest
+        | RetweetResponse of RetweetResponse
+        
+        | GetFeedRequest of GetFeedRequest
+        | GetFeedResponse of GetFeedResponse
+        
+        | GetMentionTweetsRequest of GetMentionTweetsRequest
+        | GetMentionTweetsResponse of GetMentionTweetsResponse
+        
+        | GetHashtagTweetsRequest of GetHashtagTweetsRequest
+        | GetHashtagTweetsResponse of GetHashtagTweetsResponse
+        
+        | GetFollowersTweetsRequest of GetFollowersTweetsRequest
+        | GetFollowersTweetsResponse of GetFollowersTweetsResponse

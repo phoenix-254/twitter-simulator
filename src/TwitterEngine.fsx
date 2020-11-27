@@ -8,6 +8,7 @@ open Akka.FSharp
 open Akka.Configuration
 
 open System
+open System.Collections.Generic
 
 open Models
 
@@ -40,41 +41,63 @@ let system = ActorSystem.Create("TwitterEngine", configuration)
 
 let Server (mailbox: Actor<_>) = 
     // User Id -> User Instance mapping
-    let users: Map<int, Models.User> = Map.empty
+    let users = new Dictionary<int, Models.User>()
 
     // Tweet Id -> Tweet Instance mapping
-    let tweets: Map<int, Models.Tweet> = Map.empty
+    let tweets = new Dictionary<int, Models.Tweet>()
 
     // User Handle -> User Id mapping
-    let handles: Map<string, int> = Map.empty
+    let handles = new Dictionary<string, int>()
 
     // Hashtag -> List<Tweet Id> mapping, for searching tweets having a specific hashtag
-    let hashtags: Map<string, List<int>> = Map.empty
+    let hashtags = new Dictionary<string, List<int>>()
 
     // User Id -> List<Tweet Id> mapping, for searching tweets where user is mentioned
-    let mentions: Map<int, List<int>> = Map.empty
+    let mentions = new Dictionary<int, List<int>>()
 
     let rec loop() = actor {
         let! message = mailbox.Receive()
 
+        printfn "received message %A from client" message
+
         match message with
-            | Models.ServerRequestType.RegisterUser request ->
+            | Models.MessageType.RegisterUserRequest request ->
                 printfn "Registering user %A" request
-            | Models.ServerRequestType.FollowUser request -> 
+                let userInstance: Models.User = {
+                    Id = users.Count + 1;
+                    Handle = request.Handle;
+                    FirstName = request.FirstName;
+                    LastName = request.LastName;
+                    TweetHead = None;
+                    FollowingTo = new HashSet<int>();
+                    HashtagsFollowed = new HashSet<string>();
+                }
+
+                users.Add((userInstance.Id, userInstance))
+
+                let response: Models.RegisterUserResponse = {
+                    Id = userInstance.Id;
+                    Handle = userInstance.Handle;
+                    FirstName = userInstance.FirstName;
+                    LastName = userInstance.LastName;
+                    Success = true;
+                }
+                mailbox.Sender() <! Models.MessageType.RegisterUserResponse response
+            | Models.MessageType.FollowUserRequest request -> 
                 printfn "User %d follows user %d" request.FollowerId request.FolloweeId
-            | Models.ServerRequestType.UnfollowUser request ->
+            | Models.MessageType.UnfollowUserRequest request ->
                 printfn "User %d follows user %d" request.FollowerId request.FolloweeId
-            | Models.ServerRequestType.PostTweet request ->
+            | Models.MessageType.PostTweetRequest request ->
                 printfn "User %d posting tweet: %s" request.UserId request.TweetContent
-            | Models.ServerRequestType.Retweet request ->
+            | Models.MessageType.RetweetRequest request ->
                 printfn "User %d retweeting: %d" request.UserId request.TweetId
-            | Models.ServerRequestType.GetFeed request -> 
+            | Models.MessageType.GetFeedRequest request -> 
                 printfn "Getting feed for user: %d" request.UserId
-            | Models.ServerRequestType.GetMentionTweets request ->
+            | Models.MessageType.GetMentionTweetsRequest request ->
                 printfn "Getting tweets where I'm mentioned %A" request
-            | Models.ServerRequestType.GetHashtagTweets request ->
+            | Models.MessageType.GetHashtagTweetsRequest request ->
                 printfn "Getting tweets with hashtags: %A" request
-            | Models.ServerRequestType.GetFollowersTweets request ->
+            | Models.MessageType.GetFollowersTweetsRequest request ->
                 printfn "Getting tweets from my followers: %A" request
             | _ -> 
                 printfn "Received message - %A from Client." message

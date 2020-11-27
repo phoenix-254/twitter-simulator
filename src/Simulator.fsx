@@ -4,10 +4,12 @@
 open TwitterClient
 open Utils
 
+open System
+
 let main numberOfUsers = 
-    printfn "Number of Users: %d" numberOfUsers
-    TwitterClient.hello()
-    printfn "Hello from Twitter Simulator!"
+    TwitterClient.registerUsers numberOfUsers
+
+    Console.ReadLine() |> ignore
 
 match fsi.CommandLineArgs with
     | [|_; numberOfUsers;|] ->
