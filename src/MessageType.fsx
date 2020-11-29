@@ -1,8 +1,8 @@
-namespace Models
+namespace MessageType
 
 open System.Collections.Generic
 
-module Models = 
+module MessageType = 
     type Tweet = {
         Id: int;
         Content: string;
@@ -107,12 +107,15 @@ module Models =
     }
 
     type MessageType = 
+        | PrintInfo
+
         | InitClient of InitClient
 
         | GenerateUsers
         | GenerateUserSuccess
         
         | GenerateFollowers
+        | GenerateFollowersSuccess
 
         | RegisterUserRequest of RegisterUserRequest
         | RegisterUserResponse of RegisterUserResponse

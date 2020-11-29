@@ -9,8 +9,6 @@ open System
 let main numberOfUsers = 
     TwitterClient.registerUsers numberOfUsers
 
-    Console.ReadLine() |> ignore
-
 match fsi.CommandLineArgs with
     | [|_; numberOfUsers;|] ->
         main (Utils.strToInt numberOfUsers)

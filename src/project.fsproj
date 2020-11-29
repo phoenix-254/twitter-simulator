@@ -4,7 +4,7 @@
     <TargetFramework>netcoreapp3.1</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-	<Compile Include="Models.fsx"/>  
+	<Compile Include="MessageType.fsx"/>  
     <Compile Include="Simulator.fsx"/>
     <Compile Include="TwitterClient.fsx"/>
     <Compile Include="TwitterEngine.fsx"/>

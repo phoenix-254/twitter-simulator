@@ -1,7 +1,7 @@
 #r "nuget: Akka.FSharp"
 #r "nuget: Akka.Remote"
 
-#load @"./Models.fsx"
+#load @"./MessageType.fsx"
 
 open Akka.Actor
 open Akka.FSharp
@@ -10,7 +10,7 @@ open Akka.Configuration
 open System
 open System.Collections.Generic
 
-open Models
+open MessageType
 
 // Remote configuration
 let configuration = 
@@ -32,7 +32,7 @@ let configuration =
             remote {
                 helios.tcp {
                     port = 7777
-                    hostname = ""192.168.0.193""
+                    hostname = localhost
                 }
             }
         }")
@@ -40,73 +40,55 @@ let configuration =
 let system = ActorSystem.Create("TwitterEngine", configuration)
 
 let Server (mailbox: Actor<_>) = 
-    // User Id -> User Instance mapping
-    let users = new Dictionary<int, Models.User>()
+    spawn system "Server"
+    <| fun mailbox ->
+        // User Id -> User Instance mapping
+        let users = new Dictionary<int, MessageType.User>()
 
-    // Tweet Id -> Tweet Instance mapping
-    let tweets = new Dictionary<int, Models.Tweet>()
+        // Tweet Id -> Tweet Instance mapping
+        let tweets = new Dictionary<int, MessageType.Tweet>()
 
-    // User Handle -> User Id mapping
-    let handles = new Dictionary<string, int>()
+        // User Handle -> User Id mapping
+        let handles = new Dictionary<string, int>()
 
-    // Hashtag -> List<Tweet Id> mapping, for searching tweets having a specific hashtag
-    let hashtags = new Dictionary<string, List<int>>()
+        // Hashtag -> List<Tweet Id> mapping, for searching tweets having a specific hashtag
+        let hashtags = new Dictionary<string, List<int>>()
 
-    // User Id -> List<Tweet Id> mapping, for searching tweets where user is mentioned
-    let mentions = new Dictionary<int, List<int>>()
+        // User Id -> List<Tweet Id> mapping, for searching tweets where user is mentioned
+        let mentions = new Dictionary<int, List<int>>()
 
-    let rec loop() = actor {
-        let! message = mailbox.Receive()
+        let rec loop() = actor {
+            let! message = mailbox.Receive()
 
-        printfn "received message %A from client" message
+            match message with
+                | MessageType.RegisterUserRequest request ->
+                    printfn "register user request: %A" message
+                    let userInstance: MessageType.User = {
+                        Id = users.Count + 1;
+                        Handle = request.Handle;
+                        FirstName = request.FirstName;
+                        LastName = request.LastName;
+                        TweetHead = None;
+                        FollowingTo = new HashSet<int>();
+                        HashtagsFollowed = new HashSet<string>();
+                    }
 
-        match message with
-            | Models.MessageType.RegisterUserRequest request ->
-                printfn "Registering user %A" request
-                let userInstance: Models.User = {
-                    Id = users.Count + 1;
-                    Handle = request.Handle;
-                    FirstName = request.FirstName;
-                    LastName = request.LastName;
-                    TweetHead = None;
-                    FollowingTo = new HashSet<int>();
-                    HashtagsFollowed = new HashSet<string>();
-                }
+                    users.Add((userInstance.Id, userInstance))
 
-                users.Add((userInstance.Id, userInstance))
-
-                let response: Models.RegisterUserResponse = {
-                    Id = userInstance.Id;
-                    Handle = userInstance.Handle;
-                    FirstName = userInstance.FirstName;
-                    LastName = userInstance.LastName;
-                    Success = true;
-                }
-                mailbox.Sender() <! Models.MessageType.RegisterUserResponse response
-            | Models.MessageType.FollowUserRequest request -> 
-                printfn "User %d follows user %d" request.FollowerId request.FolloweeId
-            | Models.MessageType.UnfollowUserRequest request ->
-                printfn "User %d follows user %d" request.FollowerId request.FolloweeId
-            | Models.MessageType.PostTweetRequest request ->
-                printfn "User %d posting tweet: %s" request.UserId request.TweetContent
-            | Models.MessageType.RetweetRequest request ->
-                printfn "User %d retweeting: %d" request.UserId request.TweetId
-            | Models.MessageType.GetFeedRequest request -> 
-                printfn "Getting feed for user: %d" request.UserId
-            | Models.MessageType.GetMentionTweetsRequest request ->
-                printfn "Getting tweets where I'm mentioned %A" request
-            | Models.MessageType.GetHashtagTweetsRequest request ->
-                printfn "Getting tweets with hashtags: %A" request
-            | Models.MessageType.GetFollowersTweetsRequest request ->
-                printfn "Getting tweets from my followers: %A" request
-            | _ -> 
-                printfn "Received message - %A from Client." message
-            
-        return! loop()
-    }
-    loop()
-
-spawn system "Server" Server
+                    let response: MessageType.RegisterUserResponse = {
+                        Id = userInstance.Id;
+                        Handle = userInstance.Handle;
+                        FirstName = userInstance.FirstName;
+                        LastName = userInstance.LastName;
+                        Success = true;
+                    }
+                    mailbox.Sender() <! MessageType.RegisterUserResponse response
+                | _ -> 
+                    printfn "Received message - %A from Client." message
+                
+            return! loop()
+        }
+        loop()
 
 printfn "Server is running!"
 
