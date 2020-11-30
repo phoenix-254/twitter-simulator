@@ -62,7 +62,6 @@ let Server =
         let rec loop() = 
             actor {
                 let! message = mailbox.Receive()
-                // printfn "%A" message
                 match box message with 
                 | :? string as request ->
                     let data = request.Split "|"

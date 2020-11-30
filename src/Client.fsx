@@ -105,8 +105,6 @@ module Client =
         followersDistribution.Add(([|prevEnd + 1; totalUsers + 1;|], 
             [|percentOf(totalUsers, commonMenFollowersRange.[0]); percentOf(totalUsers, commonMenFollowersRange.[1]);|]))
 
-        printfn "Follower Distribution dictionary size:%d" followersDistribution.Count
-
 
     let Client (mailbox: Actor<_>) =
         let mutable userId: int = 0
@@ -184,7 +182,7 @@ module Client =
                     | Messages.UNFOLLOW_USER_RESPONSE ->
                         match data.[1] with
                         | True ->
-                            supervisor <! Messages.UNFOLLOW_USER_SUCESS
+                            supervisor <! Messages.UNFOLLOW_USER_SUCCESS
                         | False -> printfn "Unfollow request failed"
 
                     | _ -> printfn "Invalid message %s at client %d." response userId
@@ -244,7 +242,7 @@ module Client =
                         |> ignore
                 | Messages.FOLLOW_USER_SUCCESS ->
                     followerCount <- followerCount + 1
-                    printf "%d|" followerCount
+                    // printf "%d|" followerCount
                 | _ -> printfn "Invalid message %s at supervisor." request
             | _ -> 
                 let failureMessage = "Invalid message at Supervisor!"
