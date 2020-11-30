@@ -145,27 +145,27 @@ module TwitterClient =
         if id < 100 then 8
         else 25
 
-    let rangeMap = new Dictionary<int, int>()
+    let rangeMap = new Dictionary<int, int * int>()
     
     let mutable totalUsers = 0
 
     let celebRange = Convert.ToInt32((float totalUsers) * 0.01 / 100.0)
     let smallCelebRange = Convert.ToInt32((float celebRange) + ((float totalUsers) * 0.03 / 100.0))
     let influRange = Convert.ToInt32((float smallCelebRange) + ((float totalUsers) * 0.48 / 100.0))
-    let pubfigRange = Convert.ToInt32((float influRange) + ((float totalUsers) * 0.48 / 100.0))
-    let normalRange = Convert.ToInt32((float pubfigRange) + ((float totalUsers) * 0.99))
+    let pubfigRange = Convert.ToInt32((float influRange) + ((float totalUsers) * 0.49 / 100.0))
+    let normalRange = Convert.ToInt32((float pubfigRange) + ((float totalUsers) * 0.98))
+    let celebFollowers = Convert.ToInt32((float totalUsers) * 0.9)
+    let smallCelebFollowers = Convert.ToInt32((float totalUsers) * 0.3)
+    let influFollowers = Convert.ToInt32((float totalUsers) * 0.1)
+    let pubfigFollowers = Convert.ToInt32((float totalUsers) * 0.01)
+    let normalFollowers = Convert.ToInt32((float totalUsers) * 0.0001)
     // Creates a range map
     let createRangeMap (users: int) = 
-        let celebFollowers = Convert.ToInt32((float totalUsers) * 0.9)
-        let smallCelebFollowers = Convert.ToInt32((float totalUsers) * 0.3)
-        let influFollowers = Convert.ToInt32((float totalUsers) * 0.1)
-        let pubfigFollowers = Convert.ToInt32((float totalUsers) * 0.01)
-        let normalFollowers = Convert.ToInt32((float totalUsers) * 0.0001)
-        rangeMap.Add(celebRange, celebFollowers)
-        rangeMap.Add(smallCelebRange, smallCelebFollowers)
-        rangeMap.Add(influRange, influFollowers)
-        rangeMap.Add(pubfigRange, pubfigFollowers)
-        rangeMap.Add(normalRange, normalFollowers)
+        rangeMap.Add(celebRange, (celebFollowers - celebFollowers/10 , celebFollowers))
+        rangeMap.Add(smallCelebRange, (smallCelebFollowers - smallCelebFollowers/10, smallCelebFollowers))
+        rangeMap.Add(influRange, (influFollowers - influFollowers/10, influFollowers))
+        rangeMap.Add(pubfigRange, (pubfigFollowers - pubfigFollowers/10, pubfigFollowers))
+        rangeMap.Add(normalRange, (0, normalFollowers))
     
     let Client (mailbox: Actor<_>) = 
         let mutable userId: int = 0
@@ -186,15 +186,15 @@ module TwitterClient =
             for entry in rangeMap do
                 if id <= entry.Key then
                     if entry.Key = celebRange then
-                        count <- random.Next(entry.Value - entry.Value/10, entry.Value)
+                        count <- random.Next(fst(entry.Value), snd(entry.Value))
                     elif entry.Key = smallCelebRange then
-                        count <- random.Next(entry.Value - smallCelebRange, entry.Value)
+                        count <- random.Next(fst(entry.Value), snd(entry.Value))
                     elif entry.Key = influRange then
-                        count <- random.Next(entry.Value - influRange, entry.Value)
+                        count <- random.Next(fst(entry.Value), snd(entry.Value))
                     elif entry.Key = pubfigRange then
-                        count <- random.Next(entry.Value - pubfigRange, entry.Value)
+                        count <- random.Next(fst(entry.Value), snd(entry.Value))
                     elif entry.Key = normalRange then
-                        count <- random.Next(0, entry.Value)
+                        count <- random.Next(fst(entry.Value), snd(entry.Value))
             
             count
 
