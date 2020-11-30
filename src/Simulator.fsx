@@ -1,15 +1,11 @@
-#load @"./TwitterClient.fsx"
-#load @"./Utils.fsx"
+#load @"./Client.fsx"
 
-open TwitterClient
-open Utils
+open Client
 
-open System
-
-let main numberOfUsers = 
-    TwitterClient.registerUsers numberOfUsers
+let main (numberOfUsers: int) = 
+    Client.CreateUsers(numberOfUsers)
 
 match fsi.CommandLineArgs with
-    | [|_; numberOfUsers;|] ->
-        main (Utils.strToInt numberOfUsers)
-    | _ -> printfn "Error: Invalid Arguments"
+    | [|_; n|] -> 
+        main ((n |> int))
+    | _ -> printfn "Error: Invalid Arguments."

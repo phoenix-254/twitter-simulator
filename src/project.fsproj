@@ -1,17 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
-  </PropertyGroup>
-  <ItemGroup>
-	<Compile Include="MessageType.fsx"/>  
-    <Compile Include="Simulator.fsx"/>
-    <Compile Include="TwitterClient.fsx"/>
-    <Compile Include="TwitterEngine.fsx"/>
-    <Compile Include="Utils.fsx"/>
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Akka.FSharp" Version="1.4.10"/>
-	<PackageReference Include="Akka.Remote" Version="1.4.10"/>
-  </ItemGroup>
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>netcoreapp3.1</TargetFramework>
+	</PropertyGroup>
+	<ItemGroup>
+		<Compile Include="Simulator.fsx"/>
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Akka.FSharp" Version="1.4.10"/>
+		<PackageReference Include="Akka.Remote" Version="1.4.10"/>
+	</ItemGroup>
 </Project>
