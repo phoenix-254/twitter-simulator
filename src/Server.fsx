@@ -46,6 +46,18 @@ let Server =
     <| fun mailbox -> 
         // User Id -> User Instance mapping
         let users = new Dictionary<int, User>()
+
+        // Tweet Id -> Tweet Instance mapping
+        let tweets = new Dictionary<int, Tweet>()
+    
+        // User Handle -> User Id mapping
+        let handles = new Dictionary<string, int>()
+    
+        // Hashtag -> List<Tweet Id> mapping, for searching tweets having a specific hashtag
+        let hashtags = new Dictionary<string, List<int>>()
+    
+        // User Id -> List<Tweet Id> mapping, for searching tweets where user is mentioned
+        let mentions = new Dictionary<int, List<int>>()
         
         let rec loop() = 
             actor {
@@ -69,6 +81,8 @@ let Server =
                             }
                             
                             users.Add((userInstance.Id, userInstance))
+
+                            handles.Add((userInstance.Handle, userInstance.Id))
 
                             let response = 
                                 Messages.REGISTER_USER_RESPONSE + "|" + 
