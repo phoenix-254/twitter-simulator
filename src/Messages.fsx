@@ -12,3 +12,12 @@ module Messages =
 
     [<Literal>]
     let REGISTER_USER_SUCCESS = "REGISTER_USER_SUCCESS"
+
+    [<Literal>]
+    let FOLLOW_USER_REQUEST = "FOLLOW_USER_REQUEST"
+
+    [<Literal>]
+    let FOLLOW_USER_RESPONSE = "FOLLOW_USER_RESPONSE"
+
+    [<Literal>]
+    let FOLLOW_USER_SUCCESS = "FOLLOW_USER_SUCCESS"

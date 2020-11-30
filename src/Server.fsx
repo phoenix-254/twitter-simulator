@@ -93,10 +93,14 @@ let Server =
                             mailbox.Sender() <! response
                         with
                             :? System.Exception -> 
-                            let response = 
-                                Messages.REGISTER_USER_RESPONSE + "|0|" + 
-                                data.[1] + "|||false"
+                            let response = Messages.REGISTER_USER_RESPONSE + "|0|" + data.[1] + "|||false"
                             mailbox.Sender() <! response
+                    | Messages.FOLLOW_USER_REQUEST ->
+                        let followerId = data.[1] |> int
+                        let followeeId = data.[2] |> int
+                        users.[followerId].FollowingTo.Add(followeeId) |> ignore
+                        let response = Messages.FOLLOW_USER_RESPONSE + "|true"
+                        mailbox.Sender() <! response
                     | _ -> printfn "Invalid message %s at server." request
                 | _ -> 
                     let failureMessage = "Invalid message at Server!"
