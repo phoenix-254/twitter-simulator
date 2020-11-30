@@ -67,6 +67,7 @@ let Server =
                 | :? string as request ->
                     printfn "Client request: %A" request
                     let data = request.Split "|"
+                    printfn "Data in server: %A" data
                     match data.[0] with
                     | Messages.REGISTER_USER_REQUEST ->
                         try 
@@ -100,6 +101,12 @@ let Server =
                         let followeeId = data.[2] |> int
                         users.[followerId].FollowingTo.Add(followeeId) |> ignore
                         let response = Messages.FOLLOW_USER_RESPONSE + "|true"
+                        mailbox.Sender() <! response
+                    | Messages.UNFOLLOW_USER_REQUEST ->
+                        let followerId = data.[1] |> int
+                        let followeeId = data.[2] |> int
+                        users.[follwerId].FollowingTo.Remove(followeeId) |>
+                        let response = Messages.UNFOLLOW_USER_RESPONSE + "|true"
                         mailbox.Sender() <! response
                     | _ -> printfn "Invalid message %s at server." request
                 | _ -> 

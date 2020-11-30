@@ -62,7 +62,7 @@ module Client =
     // Followers distribution map
     // [Min, Max] of UserId -> [Min, Max] of followers count
     let followersDistribution = new Dictionary<int[], int[]>()
-    
+
     // Global supervisor actor reference
     let mutable supervisor: IActorRef = null
     
@@ -72,6 +72,7 @@ module Client =
     type InitInfo = { NumberOfUsers: int; }
     type RegisterUser = { Id: int; }
     type FollowUser = { Id: int; }
+    type UnfollowUser = {Id1: int; Id2 : int;}
     
     let percentOf(number: int, percent: float) = 
         ((number |> float) * percent / 100.0) |> int
@@ -89,20 +90,23 @@ module Client =
             [|percentOf(totalUsers, starCelebrityFollowersRange.[0]); percentOf(totalUsers, starCelebrityFollowersRange.[1]);|]))
         prevEnd <- prevEnd + starCelebrityCount
 
-        followersDistribution.Add(([|prevEnd; prevEnd + celebrityCount;|], 
+        followersDistribution.Add(([|prevEnd + 1; prevEnd + celebrityCount;|], 
             [|percentOf(totalUsers, celebrityFollowersRange.[0]); percentOf(totalUsers, celebrityFollowersRange.[1]);|]))
         prevEnd <- prevEnd + celebrityCount
 
-        followersDistribution.Add(([|prevEnd; prevEnd + influencerCount;|], 
+        followersDistribution.Add(([|prevEnd + 1; prevEnd + influencerCount;|], 
             [|percentOf(totalUsers, influencerFollowersRange.[0]); percentOf(totalUsers, influencerFollowersRange.[1]);|]))
         prevEnd <- prevEnd + influencerCount
-
-        followersDistribution.Add(([|prevEnd; prevEnd + publicFigureCount;|], 
+        
+        followersDistribution.Add(([|prevEnd + 1; prevEnd + publicFigureCount;|], 
             [|percentOf(totalUsers, publicFigureFollowersRange.[0]); percentOf(totalUsers, publicFigureFollowersRange.[1]);|]))
         prevEnd <- prevEnd + publicFigureCount
-
-        followersDistribution.Add(([|prevEnd; totalUsers + 1;|], 
+        
+        followersDistribution.Add(([|prevEnd + 1; totalUsers + 1;|], 
             [|percentOf(totalUsers, commonMenFollowersRange.[0]); percentOf(totalUsers, commonMenFollowersRange.[1]);|]))
+
+        printfn "Follower Distribution dictionary size:%d" followersDistribution.Count
+
 
     let Client (mailbox: Actor<_>) =
         let mutable userId: int = 0
@@ -136,6 +140,7 @@ module Client =
         let getRandomFollowerPair() = 
             [|random.Next(1, totalUsers + 1); userId;|]
 
+
         let rec loop() = actor{
             let! message = mailbox.Receive();
     
@@ -153,8 +158,12 @@ module Client =
                     |> List.iter(fun i ->   let pair = getRandomFollowerPair()
                                             let request = Messages.FOLLOW_USER_REQUEST + "|" + (pair.[0] |> string) + "|" + (pair.[1] |> string)
                                             server <! request)
+                | :? UnfollowUser as input -> 
+                    let request = Messages.UNFOLLOW_USER_REQUEST + "|" + (input.Id1 |> string) + "|" + (input.Id2 |> string)
+                    server <! request
                 | :? string as response -> 
                     let data = response.Split "|"
+                   
                     match data.[0] with
                     | Messages.REGISTER_USER_RESPONSE -> 
                         printfn "Response from server: %s" response
@@ -169,8 +178,17 @@ module Client =
                             printfn "User with handle %s failed to register." data.[2]
                     | Messages.FOLLOW_USER_RESPONSE ->
                         match data.[1] with
-                        | True -> supervisor <! Messages.FOLLOW_USER_SUCCESS
+                        | True -> 
+                            printf "DATA PRINT: %A" data
+                            supervisor <! Messages.FOLLOW_USER_SUCCESS
                         | False -> printfn "Follow request failed."
+
+                    | Messages.UNFOLLOW_USER_RESPONSE ->
+                        match data.[1] with
+                        | True ->
+                            supervisor <! Messages.UNFOLLOW_USER_SUCESS
+                        | False -> printfn "Unfollow request failed"
+
                     | _ -> printfn "Invalid message %s at client %d." response userId
                 | _ -> 
                     let failureMessage = "Invalid message at Client!"
@@ -207,7 +225,10 @@ module Client =
                 for entry in followersDistribution do
                     printfn "%A : %A" entry.Key entry.Value
             | :? string as request -> 
+                
                 let data = request.Split "|"
+                printfn "Print data: %A" data
+
                 match data.[0] with
                 | Messages.REGISTER_USERS ->
                     [1 .. totalUsers]
@@ -216,6 +237,7 @@ module Client =
                                             clients.Add(client)
                                             let registerUser: RegisterUser = { Id = i; }
                                             client <! registerUser)
+                    
                     |> ignore
                 | Messages.REGISTER_USER_SUCCESS ->
                     numberOfUsersCreated <- numberOfUsersCreated + 1
@@ -240,6 +262,7 @@ module Client =
         
         let input: InitInfo = { NumberOfUsers = numberOfUsers; }
         supervisor <! input
+        supervisor <! Messages.REGISTER_USERS
 
         Console.ReadLine() |> ignore
         

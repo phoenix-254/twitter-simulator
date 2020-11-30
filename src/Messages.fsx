@@ -21,3 +21,14 @@ module Messages =
 
     [<Literal>]
     let FOLLOW_USER_SUCCESS = "FOLLOW_USER_SUCCESS"
+    
+    [<Literal>]
+    let UNFOLLOW_USER_REQUEST = "UNFOLLOW_USER_REQUEST"
+
+    [<Literal>]
+    let UNFOLLOW_USER_RESPONSE = "UNFOLLOW_USER_RESPONSE"
+
+    [<Literal>]
+    let UNFOLLOW_USER_SUCCESS = "UNFOLLOW_USER_SUCCESS"
+
+
