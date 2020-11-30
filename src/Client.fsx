@@ -166,7 +166,6 @@ module Client =
                    
                     match data.[0] with
                     | Messages.REGISTER_USER_RESPONSE -> 
-                        printfn "Response from server: %s" response
                         match data.[5] with
                         | True -> 
                             userId <- (data.[1] |> int)
@@ -179,7 +178,6 @@ module Client =
                     | Messages.FOLLOW_USER_RESPONSE ->
                         match data.[1] with
                         | True -> 
-                            printf "DATA PRINT: %A" data
                             supervisor <! Messages.FOLLOW_USER_SUCCESS
                         | False -> printfn "Follow request failed."
 
@@ -220,14 +218,12 @@ module Client =
                 printfn "influencers : %d" influencerCount
                 printfn "publicFig : %d" publicFigureCount
                 printfn "commonMen : %d" commonMenCount
-                
-                printfn "Followers distribution"
+
                 for entry in followersDistribution do
                     printfn "%A : %A" entry.Key entry.Value
             | :? string as request -> 
                 
                 let data = request.Split "|"
-                printfn "Print data: %A" data
 
                 match data.[0] with
                 | Messages.REGISTER_USERS ->

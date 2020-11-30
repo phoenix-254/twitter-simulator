@@ -62,12 +62,11 @@ let Server =
         let rec loop() = 
             actor {
                 let! message = mailbox.Receive()
-                printfn "%A" message
+                // printfn "%A" message
                 match box message with 
                 | :? string as request ->
-                    printfn "Client request: %A" request
                     let data = request.Split "|"
-                    printfn "Data in server: %A" data
+                    
                     match data.[0] with
                     | Messages.REGISTER_USER_REQUEST ->
                         try 
@@ -105,7 +104,7 @@ let Server =
                     | Messages.UNFOLLOW_USER_REQUEST ->
                         let followerId = data.[1] |> int
                         let followeeId = data.[2] |> int
-                        users.[follwerId].FollowingTo.Remove(followeeId) |>
+                        users.[followerId].FollowingTo.Remove(followeeId) |> ignore
                         let response = Messages.UNFOLLOW_USER_RESPONSE + "|true"
                         mailbox.Sender() <! response
                     | _ -> printfn "Invalid message %s at server." request
