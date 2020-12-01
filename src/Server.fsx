@@ -7,6 +7,7 @@ open Akka.Actor
 open Akka.FSharp
 open Akka.Remote
 open Akka.Configuration
+open System.Text.RegularExpressions
 
 open System
 open System.Collections.Generic
@@ -123,18 +124,55 @@ type Server() =
             printfn "Post tweet: %A" request
             time <- time + 1
             let tweet: Tweet = {
-                Id = Tweet.Count + 1;
+                Id = tweets.Count + 1;
                 Content = request.Content;
                 CreatedTime = time;
                 NextTweet = None;
             }
-            tweets.Add((tweet.Id, Tweet))
+            tweets.Add((tweet.Id, tweet))
 
             // Parse user mentions from the tweet content and update relevant dict
+            let mentionPattern = "/(?<!\w)@(\w+)/" // takes care of the email address mention
+            let mentiondMatch = Regex.Match(mentionPattern, request.Content)
+            
+            for group in mentiondMatch.Groups do
+                let mutable handle = group.Value
+
+                if group.Success then 
+                    let userId = Convert.ToInt32(handles.TryGetValue(handle))
+                    if mentions.ContainsKey(userId) then
+                        mentions.[userId].Add(tweet.Id)
+                    else 
+                        let tweetIdList = new List<int>()
+                        tweetIdList.Add(tweet.Id)
+                        mentions.Add(userId, tweetIdList)
 
             // Parse hashtags from the tweet content and update relevant dict
+            let tagPattern = "/(^|\B)#(?![0-9_]+\b)([a-zA-Z0-9_]{1,30})(\b|\r)/g"
+            let tagMatch = Regex.Match(tagPattern, request.Content)
 
+            for group in tagMatch.Groups do
+                let mutable tag = group.Value
+
+                if group.Success then 
+                    if hashtags.ContainsKey(tag) then
+                        hashtags.[tag].Add(tweet.Id)
+                    else
+                        let tweetIdList = new List<int>()
+                        tweetIdList.Add(tweet.Id)
+                        hashtags.Add(tag, tweetIdList)
             // Send response
+            let tweetSuccess = tweets.ContainsKey(tweet.Id)
+
+            let response: PostTweetResponse = {
+                UserId = request.UserId;
+                TweetId = tweet.Id;
+                Content = tweets.[tweet.Id].Content;
+                Success = tweetSuccess;
+            }
+
+            x.Sender.Tell response
+
         | :? PrintInfo as request -> 
             let user = users.[request.Id]
             printfn "%d | %s | %s | %s | %d | %d" user.Id user.Handle user.FirstName user.LastName user.Followers.Count user.FollowingTo.Count

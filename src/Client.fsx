@@ -22,6 +22,8 @@ type RegisterUserSuccess = { Id: int; }
 type CreateFollowers = { FakeProp: int; }
 type CreateFollowersSuccess = { FakeProp: int; }
 
+type PostTweetSuccess = { Id: int; }
+
 // Remote Configuration
 let configuration = 
     ConfigurationFactory.ParseString(
@@ -158,6 +160,13 @@ type Client() =
                 supervisor.Tell req
             if response.Success then ()
             else ()
+
+        | :? PostTweetResponse as response ->
+            if response.Success then
+                printfn "Your tweet was posted with TWEET_ID: %d" response.TweetId
+            else
+                printfn "Your tweet was NOT posted"
+
         | :? PrintInfo as req -> 
             server.Tell req
         | _ -> ()
@@ -168,6 +177,7 @@ type Supervisor() =
     let mutable parent: IActorRef = null
     
     let mutable followerDone = 0
+    let mutable tweetsPosted = 0
 
     override x.OnReceive (message: obj) = 
         match message with
@@ -204,6 +214,10 @@ type Supervisor() =
                 |> List.iter (fun id -> let req: PrintInfo = { Id = id; }
                                         clients.[id-1].Tell req)
                 |> ignore
+        | :? PostTweetSuccess as response ->
+            // Logic for posting Tweets
+            tweetsPosted <- tweetsPosted + 1
+
         | _ -> ()
 
 let CreateUsers(numberOfUsers: int) = 
