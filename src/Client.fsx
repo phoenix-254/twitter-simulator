@@ -224,7 +224,7 @@ type Supervisor() =
                 let r2: PostTweet = { Id = 2; Content = "good morning #sunrise @User10 @User856 yay" }
                 clients.[1].Tell r2
 
-                let r3: PostTweet = { Id = 298; Content = "awesome click #sunrise # morning @User2 " }
+                let r3: PostTweet = { Id = 298; Content = "awesome click #sunrise#morning @User2 " }
                 clients.[297].Tell r3
         | :? PostTweetSuccess as response ->
             // Logic for posting Tweets

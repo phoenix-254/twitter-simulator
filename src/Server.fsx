@@ -76,11 +76,13 @@ type Server() =
     let mentionPattern = @"@\w+"
     let hashtagPattern = @"#\w+"
 
-    let findAllMatches (text: string, regex: string) = 
+    let findAllMatches (text: string, regex: string, sep: string) = 
         let ans = new HashSet<string>()
         let matches = Regex.Matches(text, regex)
         for m in matches do
-            ans.Add(m.Value.[1..])
+            let ms = m.Value.Split sep |> Array.filter(fun i ->  (String.length i) > 0)
+            for i in ms do
+                ans.Add(i) |> ignore
         ans
 
     override x.OnReceive (message: obj) =   
@@ -142,7 +144,7 @@ type Server() =
             }
             tweets.Add((tweet.Id, tweet))
 
-            let tweetMentions = findAllMatches(request.Content, mentionPattern)
+            let tweetMentions = findAllMatches(request.Content, mentionPattern, "@")
             for mention in tweetMentions do
                 if handles.ContainsKey mention then
                     let userId = handles.[mention]
@@ -159,7 +161,7 @@ type Server() =
                     printf "%A; " i
                 printf "]\n"
 
-            let tweetHashtags = findAllMatches(request.Content, hashtagPattern)
+            let tweetHashtags = findAllMatches(request.Content, hashtagPattern, "#")
             for tag in tweetHashtags do
                 if hashtags.ContainsKey tag then
                     hashtags.[tag].Add(tweet.Id)
