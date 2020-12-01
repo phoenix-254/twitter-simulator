@@ -22,6 +22,7 @@ type RegisterUserSuccess = { Id: int; }
 type CreateFollowers = { FakeProp: int; }
 type CreateFollowersSuccess = { FakeProp: int; }
 
+type PostTweet = { Id: int; Content: string; }
 type PostTweetSuccess = { Id: int; }
 
 // Remote Configuration
@@ -63,8 +64,6 @@ let mutable supervisor: IActorRef = null
 
 // Client nodes list
 let clients = new List<IActorRef>()
-
-let mutable followerCount = 0
 
 let percentOf(number: int, percent: float) = 
     ((number |> float) * percent / 100.0) |> int
@@ -139,7 +138,6 @@ type Client() =
             else ()
         | :? CreateFollowers as fake -> 
             let numberOfFollowers = getNumberOfFollowers()
-            followerCount <- followerCount + numberOfFollowers
             if numberOfFollowers = 0 then
                 let req: CreateFollowersSuccess = { FakeProp = 0; }
                 supervisor.Tell req
@@ -160,13 +158,18 @@ type Client() =
                 supervisor.Tell req
             if response.Success then ()
             else ()
-
+        | :? PostTweet as request -> 
+            let req: PostTweetRequest = {
+                UserId = request.Id;
+                Content = request.Content;
+            }
+            server.Tell req
         | :? PostTweetResponse as response ->
+            printfn "%A" response
             if response.Success then
                 printfn "Your tweet was posted with TWEET_ID: %d" response.TweetId
             else
                 printfn "Your tweet was NOT posted"
-
         | :? PrintInfo as req -> 
             server.Tell req
         | _ -> ()
@@ -210,14 +213,22 @@ type Supervisor() =
             followerDone <- followerDone + 1
             if followerDone = totalUsers then
                 printfn "follower generation done!"
-                [1 .. totalUsers]
-                |> List.iter (fun id -> let req: PrintInfo = { Id = id; }
-                                        clients.[id-1].Tell req)
-                |> ignore
+                // [1 .. totalUsers]
+                // |> List.iter (fun id -> let req: PrintInfo = { Id = id; }
+                //                         clients.[id-1].Tell req)
+                // |> ignore
+
+                let r1: PostTweet = { Id = 2; Content = "good morning #morning #fresh @User4 @User856 yay" }
+                clients.[1].Tell r1
+
+                let r2: PostTweet = { Id = 2; Content = "good morning #sunrise @User10 @User856 yay" }
+                clients.[1].Tell r2
+
+                let r3: PostTweet = { Id = 298; Content = "awesome click #sunrise # morning @User2 " }
+                clients.[297].Tell r3
         | :? PostTweetSuccess as response ->
             // Logic for posting Tweets
             tweetsPosted <- tweetsPosted + 1
-
         | _ -> ()
 
 let CreateUsers(numberOfUsers: int) = 

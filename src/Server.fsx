@@ -72,6 +72,17 @@ type Server() =
     // Reference to the current time
     let mutable time = 0
 
+    // Regex patterns
+    let mentionPattern = @"@\w+"
+    let hashtagPattern = @"#\w+"
+
+    let findAllMatches (text: string, regex: string) = 
+        let ans = new HashSet<string>()
+        let matches = Regex.Matches(text, regex)
+        for m in matches do
+            ans.Add(m.Value.[1..])
+        ans
+
     override x.OnReceive (message: obj) =   
         match message with 
         | :? BootServer as bootInfo -> 
@@ -79,7 +90,7 @@ type Server() =
         | :? RegisterUserRequest as request ->
             try 
                 let user: User = {
-                    Id = users.Count + 1;
+                    Id = (request.Handle.[4..] |> int);
                     Handle = request.Handle;
                     FirstName = request.FirstName;
                     LastName = request.LastName;
@@ -131,48 +142,48 @@ type Server() =
             }
             tweets.Add((tweet.Id, tweet))
 
-            // Parse user mentions from the tweet content and update relevant dict
-            let mentionPattern = "/(?<!\w)@(\w+)/" // takes care of the email address mention
-            let mentiondMatch = Regex.Match(mentionPattern, request.Content)
-            
-            for group in mentiondMatch.Groups do
-                let mutable handle = group.Value
-
-                if group.Success then 
-                    let userId = Convert.ToInt32(handles.TryGetValue(handle))
-                    if mentions.ContainsKey(userId) then
+            let tweetMentions = findAllMatches(request.Content, mentionPattern)
+            for mention in tweetMentions do
+                if handles.ContainsKey mention then
+                    let userId = handles.[mention]
+                    if mentions.ContainsKey userId then
                         mentions.[userId].Add(tweet.Id)
                     else 
                         let tweetIdList = new List<int>()
                         tweetIdList.Add(tweet.Id)
-                        mentions.Add(userId, tweetIdList)
+                        mentions.Add((userId, tweetIdList))
 
-            // Parse hashtags from the tweet content and update relevant dict
-            let tagPattern = "/(^|\B)#(?![0-9_]+\b)([a-zA-Z0-9_]{1,30})(\b|\r)/g"
-            let tagMatch = Regex.Match(tagPattern, request.Content)
+            for entry in mentions do
+                printf "%A : [" entry.Key
+                for i in entry.Value do
+                    printf "%A; " i
+                printf "]\n"
 
-            for group in tagMatch.Groups do
-                let mutable tag = group.Value
+            let tweetHashtags = findAllMatches(request.Content, hashtagPattern)
+            for tag in tweetHashtags do
+                if hashtags.ContainsKey tag then
+                    hashtags.[tag].Add(tweet.Id)
+                else 
+                    let tweetIdList = new List<int>()
+                    tweetIdList.Add(tweet.Id)
+                    hashtags.Add((tag, tweetIdList))
 
-                if group.Success then 
-                    if hashtags.ContainsKey(tag) then
-                        hashtags.[tag].Add(tweet.Id)
-                    else
-                        let tweetIdList = new List<int>()
-                        tweetIdList.Add(tweet.Id)
-                        hashtags.Add(tag, tweetIdList)
+            for entry in hashtags do
+                printf "%A : [" entry.Key
+                for i in entry.Value do
+                    printf "%A; " i
+                printf "]\n"
+
             // Send response
             let tweetSuccess = tweets.ContainsKey(tweet.Id)
-
             let response: PostTweetResponse = {
                 UserId = request.UserId;
                 TweetId = tweet.Id;
-                Content = tweets.[tweet.Id].Content;
+                Content = request.Content;
                 Success = tweetSuccess;
             }
 
             x.Sender.Tell response
-
         | :? PrintInfo as request -> 
             let user = users.[request.Id]
             printfn "%d | %s | %s | %s | %d | %d" user.Id user.Handle user.FirstName user.LastName user.Followers.Count user.FollowingTo.Count
