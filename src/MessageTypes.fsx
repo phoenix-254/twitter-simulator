@@ -30,6 +30,18 @@ type UnfollowUserResponse = {
     Success: bool;
 }
 
+type PostTweetRequest = {
+    UserId: int;
+    Content: string;
+}
+
+type PostTweetResponse = {
+    UserId: int;
+    TweetId: int;
+    Content: string;
+    Success: bool;
+}
+
 type PrintInfo = {
     Id: int;
 }

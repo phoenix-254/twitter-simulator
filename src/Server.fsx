@@ -25,7 +25,7 @@ type Tweet = {
     Id: int;
     Content: string;
     CreatedTime: int;
-    NextTweet: Tweet;
+    NextTweet: Tweet option;
 }
 
 type User = {
@@ -68,13 +68,16 @@ type Server() =
     // User Id -> List<Tweet Id> mapping, for searching tweets where user is mentioned
     let mentions = new Dictionary<int, List<int>>()
 
+    // Reference to the current time
+    let mutable time = 0
+
     override x.OnReceive (message: obj) =   
         match message with 
         | :? BootServer as bootInfo -> 
             printfn "%s" bootInfo.BootMessage
         | :? RegisterUserRequest as request ->
             try 
-                let userInstance: User = {
+                let user: User = {
                     Id = users.Count + 1;
                     Handle = request.Handle;
                     FirstName = request.FirstName;
@@ -84,15 +87,15 @@ type Server() =
                     FollowingTo = new HashSet<int>();
                 }
                 
-                users.Add((userInstance.Id, userInstance))
+                users.Add((user.Id, user))
 
-                handles.Add((userInstance.Handle, userInstance.Id))
+                handles.Add((user.Handle, user.Id))
                 
                 let response: RegisterUserResponse = {
-                    Id = userInstance.Id;
-                    Handle = userInstance.Handle;
-                    FirstName = userInstance.FirstName;
-                    LastName = userInstance.LastName;
+                    Id = user.Id;
+                    Handle = user.Handle;
+                    FirstName = user.FirstName;
+                    LastName = user.LastName;
                     Success = true;
                 }
                 x.Sender.Tell response
@@ -116,9 +119,25 @@ type Server() =
             users.[request.FolloweeId].Followers.Remove(request.FollowerId) |> ignore
             let response: UnfollowUserResponse = { Success = true; }
             x.Sender.Tell response
+        | :? PostTweetRequest as request -> 
+            printfn "Post tweet: %A" request
+            time <- time + 1
+            let tweet: Tweet = {
+                Id = Tweet.Count + 1;
+                Content = request.Content;
+                CreatedTime = time;
+                NextTweet = None;
+            }
+            tweets.Add((tweet.Id, Tweet))
+
+            // Parse user mentions from the tweet content and update relevant dict
+
+            // Parse hashtags from the tweet content and update relevant dict
+
+            // Send response
         | :? PrintInfo as request -> 
             let user = users.[request.Id]
-            printfn "%d | %s | %s | %s | %d" user.Id user.Handle user.FirstName user.LastName user.Followers.Count
+            printfn "%d | %s | %s | %s | %d | %d" user.Id user.Handle user.FirstName user.LastName user.Followers.Count user.FollowingTo.Count
         | _ -> ()
 
 let server = system.ActorOf(Props(typedefof<Server>), "Server")
