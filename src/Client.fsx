@@ -1,266 +1,218 @@
-namespace Client
-
 #r "nuget: Akka.FSharp"
 #r "nuget: Akka.Remote"
-#load @"./Messages.fsx"
 
-module Client = 
-    open Akka.Actor
-    open Akka.FSharp
-    open Akka.Configuration
+#load @"./MessageTypes.fsx"
 
-    open System
-    open System.Collections.Generic
+open Akka.Actor
+open Akka.FSharp
+open Akka.Remote
+open Akka.Configuration
 
-    open Messages
+open System
+open System.Collections.Generic
 
-    // Remote Configuration
-    let configuration = 
-        ConfigurationFactory.ParseString(
-            @"akka {
-                actor {
-                    provider = ""Akka.Remote.RemoteActorRefProvider, Akka.Remote""
-                    deployment {
-                        /server {
-                            remote = ""akka.tcp://System@127.0.0.1:5555""
-                        }
-                    }
-                }
-                remote.helios.tcp {
-                    port = 0
-                    hostname = ""127.0.0.1""
-                }
-            }")
+open MessageTypes
 
-    let system = ActorSystem.Create("System", configuration)
+type Init = { TotalUsers: int; }
+type Shutdown = { Message: string; }
+
+type RegisterUser = { Id: int; }
+type RegisterUserSuccess = { Id: int; }
+
+type CreateFollowers = { FakeProp: int; }
+type CreateFollowersSuccess = { FakeProp: int; }
+
+// Remote Configuration
+let configuration = 
+    ConfigurationFactory.ParseString(
+        @"akka {
+            actor.provider = ""Akka.Remote.RemoteActorRefProvider, Akka.Remote""
+            remote.helios.tcp {
+                port = 6666
+                hostname = localhost
+            }
+        }")
+
+let system = ActorSystem.Create("Twitter", configuration)
+
+let server = system.ActorSelection("akka.tcp://Twitter@localhost:5555/user/Server")
+
+// Total number of registered users
+let mutable totalUsers = 0
+
+// User categories
+let mutable celebrityCount: int = 0
+let celebrityPercent: float = 0.5
+let celebrityFollowersRange = [|50.0; 80.0;|]
+
+let mutable influencerCount: int = 0
+let influencerPercent: float = 11.5
+let influencerFollowersRange = [|8.0; 35.0;|]
+
+let mutable commonMenCount: int = 0
+let commonMenFollowersRange = [|0.0; 1.0;|]
+
+// Followers distribution map
+// [Min, Max] of UserId -> [Min, Max] of followers count
+let followersDistribution = new Dictionary<int[], int[]>()
+
+// Global supervisor actor reference
+let mutable supervisor: IActorRef = null
+
+// Client nodes list
+let clients = new List<IActorRef>()
+
+let mutable followerCount = 0
+
+let percentOf(number: int, percent: float) = 
+    ((number |> float) * percent / 100.0) |> int
+
+let calculateUserCategoryCount() = 
+    celebrityCount <- percentOf(totalUsers, celebrityPercent)
+    influencerCount <- percentOf(totalUsers, influencerPercent)
+    commonMenCount <- totalUsers - (celebrityCount + influencerCount)
+
+let calculateFollowersDistribution() = 
+    let mutable prevEnd = 1
+
+    followersDistribution.Add(([|prevEnd; prevEnd + celebrityCount;|], [|percentOf(totalUsers, celebrityFollowersRange.[0]); percentOf(totalUsers, celebrityFollowersRange.[1]);|]))
+    prevEnd <- prevEnd + celebrityCount
+
+    followersDistribution.Add(([|prevEnd; prevEnd + influencerCount;|], [|percentOf(totalUsers, influencerFollowersRange.[0]); percentOf(totalUsers, influencerFollowersRange.[1]);|]))
+    prevEnd <- prevEnd + influencerCount
     
-    let server = system.ActorSelection("akka.tcp://System@127.0.0.1:5555/user/server")
+    followersDistribution.Add(([|prevEnd; totalUsers + 1;|], [|percentOf(totalUsers, commonMenFollowersRange.[0]); percentOf(totalUsers, commonMenFollowersRange.[1]);|]))
 
-    // Total number of registered users
-    let mutable totalUsers = 0
+type Client() = 
+    inherit Actor()
+    let mutable userId: int = 0
+    let mutable handle: string = ""
+    let mutable firstName: string = ""
+    let mutable lastName: string = ""
 
-    // User categories
-    let mutable starCelebrityCount: int = 0
-    let starCelebrityPercent: float = 0.05
-    let starCelebrityFollowersRange = [|65.0; 90.0;|]
+    let mutable followersToCreate = 0
+    let mutable followersCreated = 0
 
-    let mutable celebrityCount: int = 0
-    let celebrityPercent: float = 0.4
-    let celebrityFollowersRange = [|45.0; 72.0;|]
+    let random = Random()
+
+    let upperCase = [|'A' .. 'Z'|]
+    let lowerCase = [|'a' .. 'z'|]
+    let generateRandomName(): string = 
+        let len = random.Next(5)
+        let mutable name: string = ""
+        name <- name + (upperCase.[random.Next(26)] |> string)
+        [1 .. (len-1)]
+        |> List.iter(fun i ->   name <- name + (lowerCase.[random.Next(26)] |> string))
+        |> ignore
+        name
+
+    let rec getNumberOfFollowers() =  
+        let mutable count = 0
+        for entry in followersDistribution do
+            if (userId >= entry.Key.[0] && userId < entry.Key.[1]) then 
+                count <- random.Next(entry.Value.[0], entry.Value.[1])
+        count
+
+    let getRandomFollowerPair() = 
+        [|random.Next(1, totalUsers + 1); userId;|]
+
+    override x.OnReceive (message: obj) =
+        match message with
+        | :? RegisterUser as user -> 
+            let request: RegisterUserRequest = {
+                Handle = ("User" + (user.Id |> string));
+                FirstName = generateRandomName();
+                LastName = generateRandomName();
+            }
+            server.Tell request
+        | :? RegisterUserResponse as response -> 
+            if response.Success then 
+                userId <- response.Id
+                handle <- response.Handle
+                firstName <- response.FirstName
+                lastName <- response.LastName
+
+                let res: RegisterUserSuccess = { Id = response.Id; }
+                supervisor.Tell res
+            else ()
+        | :? CreateFollowers as fake -> 
+            let numberOfFollowers = getNumberOfFollowers()
+            followerCount <- followerCount + numberOfFollowers
+            if numberOfFollowers = 0 then
+                let req: CreateFollowersSuccess = { FakeProp = 0; }
+                supervisor.Tell req
+            else
+                followersToCreate <- numberOfFollowers
+                [1 .. numberOfFollowers]
+                |> List.iter(fun i ->   let pair = getRandomFollowerPair()
+                                        let request: FollowUserRequest = {
+                                            FollowerId = pair.[0];
+                                            FolloweeId = pair.[1];
+                                        }
+                                        server.Tell request)
+                |> ignore
+        | :? FollowUserResponse as response -> 
+            followersCreated <- followersCreated + 1
+            if followersCreated = followersToCreate then 
+                let req: CreateFollowersSuccess = { FakeProp = 0; }
+                supervisor.Tell req
+            if response.Success then ()
+            else ()
+        | :? PrintInfo as req -> 
+            server.Tell req
+        | _ -> ()
+
+type Supervisor() = 
+    inherit Actor()
+    let mutable numberOfUsersCreated: int = 0
+    let mutable parent: IActorRef = null
     
-    let mutable influencerCount: int = 0
-    let influencerPercent: float = 8.4
-    let influencerFollowersRange = [|11.0; 54.0;|]
-    
-    let mutable publicFigureCount: int = 0
-    let publicFigurePercent: float = 14.7
-    let publicFigureFollowersRange = [|1.0; 23.0;|]
-    
-    let mutable commonMenCount: int = 0
-    let commonMenFollowersRange = [|0.0; 1.5;|]
+    let mutable followerDone = 0
 
-    // Followers distribution map
-    // [Min, Max] of UserId -> [Min, Max] of followers count
-    let followersDistribution = new Dictionary<int[], int[]>()
+    override x.OnReceive (message: obj) = 
+        match message with
+        | :? Init as init -> 
+            totalUsers <- init.TotalUsers
+            parent <- x.Sender
 
-    // Global supervisor actor reference
-    let mutable supervisor: IActorRef = null
-    
-    // Client nodes list
-    let clients = new List<IActorRef>()
+            calculateUserCategoryCount()
+            calculateFollowersDistribution()
 
-    type InitInfo = { NumberOfUsers: int; }
-    type RegisterUser = { Id: int; }
-    type FollowUser = { Id: int; }
-    type UnfollowUser = {Id1: int; Id2 : int;}
-    
-    let percentOf(number: int, percent: float) = 
-        ((number |> float) * percent / 100.0) |> int
-
-    let calculateUserCategoryCount() = 
-        starCelebrityCount <- percentOf(totalUsers, starCelebrityPercent)
-        celebrityCount <- percentOf(totalUsers, celebrityPercent)
-        influencerCount <- percentOf(totalUsers, influencerPercent)
-        publicFigureCount <- percentOf(totalUsers, publicFigurePercent)
-        commonMenCount <- totalUsers - (starCelebrityCount + celebrityCount + influencerCount + publicFigureCount)
-
-    let calculateFollowersDistribution() = 
-        let mutable prevEnd = 1
-        followersDistribution.Add(([|prevEnd; prevEnd + starCelebrityCount;|], 
-            [|percentOf(totalUsers, starCelebrityFollowersRange.[0]); percentOf(totalUsers, starCelebrityFollowersRange.[1]);|]))
-        prevEnd <- prevEnd + starCelebrityCount
-
-        followersDistribution.Add(([|prevEnd + 1; prevEnd + celebrityCount;|], 
-            [|percentOf(totalUsers, celebrityFollowersRange.[0]); percentOf(totalUsers, celebrityFollowersRange.[1]);|]))
-        prevEnd <- prevEnd + celebrityCount
-
-        followersDistribution.Add(([|prevEnd + 1; prevEnd + influencerCount;|], 
-            [|percentOf(totalUsers, influencerFollowersRange.[0]); percentOf(totalUsers, influencerFollowersRange.[1]);|]))
-        prevEnd <- prevEnd + influencerCount
-        
-        followersDistribution.Add(([|prevEnd + 1; prevEnd + publicFigureCount;|], 
-            [|percentOf(totalUsers, publicFigureFollowersRange.[0]); percentOf(totalUsers, publicFigureFollowersRange.[1]);|]))
-        prevEnd <- prevEnd + publicFigureCount
-        
-        followersDistribution.Add(([|prevEnd + 1; totalUsers + 1;|], 
-            [|percentOf(totalUsers, commonMenFollowersRange.[0]); percentOf(totalUsers, commonMenFollowersRange.[1]);|]))
-
-        printfn "Follower Distribution dictionary size:%d" followersDistribution.Count
-
-
-    let Client (mailbox: Actor<_>) =
-        let mutable userId: int = 0
-        let mutable handle: string = ""
-        let mutable firstName: string = ""
-        let mutable lastName: string = ""
-
-        let random = Random()
-        
-        let upperCase = [|'A' .. 'Z'|]
-        let lowerCase = [|'a' .. 'z'|]
-        let generateRandomName(): string = 
-            let len = random.Next(10)
-            
-            let mutable name: string = ""
-            name <- name + (upperCase.[random.Next(26)] |> string)
-            
-            [1 .. (len-1)]
-            |> List.iter(fun i ->   name <- name + (lowerCase.[random.Next(26)] |> string))
+            [1 .. totalUsers]
+            |> List.iter (fun id -> let client = system.ActorOf(Props(typedefof<Client>), ("Client" + (id |> string)))
+                                    clients.Add(client)
+                                    let request: RegisterUser = { Id = id; }
+                                    client.Tell request)
             |> ignore
-    
-            name
+        | :? RegisterUserSuccess as response -> 
+            numberOfUsersCreated <- numberOfUsersCreated + 1
+            if  numberOfUsersCreated = totalUsers then
+                printfn "user creation done!"
+                let request: CreateFollowers = { FakeProp = 0; }
+                x.Self.Tell request
+        | :? CreateFollowers as fake -> 
+            printfn "creating followers."
+            [1 .. totalUsers]
+            |> List.iter (fun id -> let req: CreateFollowers = { FakeProp = 0; }
+                                    clients.[id-1].Tell req)
+            |> ignore
+        | :? CreateFollowersSuccess as fake -> 
+            followerDone <- followerDone + 1
+            if followerDone = totalUsers then
+                printfn "follower generation done!"
+                [1 .. totalUsers]
+                |> List.iter (fun id -> let req: PrintInfo = { Id = id; }
+                                        clients.[id-1].Tell req)
+                |> ignore
+        | _ -> ()
 
-        let rec getNumberOfFollowers() =  
-            let mutable count = 0
-            for entry in followersDistribution do
-                if (userId >= entry.Key.[0] && userId < entry.Key.[1]) then 
-                    count <- random.Next(entry.Value.[0], entry.Value.[1])
-            count
+let CreateUsers(numberOfUsers: int) = 
+    supervisor <- system.ActorOf(Props(typedefof<Supervisor>), "Supervisor")
 
-        let getRandomFollowerPair() = 
-            [|random.Next(1, totalUsers + 1); userId;|]
+    let (task:Async<Shutdown>) = (supervisor <? { TotalUsers = numberOfUsers; })
+    let response = Async.RunSynchronously (task)
+    printfn "%A" response
+    supervisor.Tell(PoisonPill.Instance)
 
-
-        let rec loop() = actor{
-            let! message = mailbox.Receive();
-    
-            match box message with 
-                | :? RegisterUser as input -> 
-                    let request = 
-                        Messages.REGISTER_USER_REQUEST + "|" + 
-                        ("User" + (input.Id |> string)) + "|" +
-                        (generateRandomName()) + "|" +
-                        (generateRandomName())
-                    server <! request
-                | :? FollowUser as input -> 
-                    let numberOfFollowers = getNumberOfFollowers()
-                    [1 .. numberOfFollowers]
-                    |> List.iter(fun i ->   let pair = getRandomFollowerPair()
-                                            let request = Messages.FOLLOW_USER_REQUEST + "|" + (pair.[0] |> string) + "|" + (pair.[1] |> string)
-                                            server <! request)
-                | :? UnfollowUser as input -> 
-                    let request = Messages.UNFOLLOW_USER_REQUEST + "|" + (input.Id1 |> string) + "|" + (input.Id2 |> string)
-                    server <! request
-                | :? string as response -> 
-                    let data = response.Split "|"
-                   
-                    match data.[0] with
-                    | Messages.REGISTER_USER_RESPONSE -> 
-                        match data.[5] with
-                        | True -> 
-                            userId <- (data.[1] |> int)
-                            handle <- data.[2]
-                            firstName <- data.[3]
-                            lastName <- data.[4]
-                            supervisor <! Messages.REGISTER_USER_SUCCESS
-                        | False ->
-                            printfn "User with handle %s failed to register." data.[2]
-                    | Messages.FOLLOW_USER_RESPONSE ->
-                        match data.[1] with
-                        | True -> 
-                            supervisor <! Messages.FOLLOW_USER_SUCCESS
-                        | False -> printfn "Follow request failed."
-
-                    | Messages.UNFOLLOW_USER_RESPONSE ->
-                        match data.[1] with
-                        | True ->
-                            supervisor <! Messages.UNFOLLOW_USER_SUCESS
-                        | False -> printfn "Unfollow request failed"
-
-                    | _ -> printfn "Invalid message %s at client %d." response userId
-                | _ -> 
-                    let failureMessage = "Invalid message at Client!"
-                    failwith failureMessage
-            return! loop()
-        }            
-        loop()
-    
-    let Supervisor (mailbox: Actor<_>) =
-        let mutable numberOfUsersCreated: int = 0
-        
-        let mutable followerCount: int = 0
-    
-        let mutable parent: IActorRef = null
-    
-        let rec loop()= actor{
-            let! message = mailbox.Receive();
-            
-            match box message with 
-            | :? InitInfo as input -> 
-                totalUsers <- input.NumberOfUsers
-                parent <- mailbox.Sender()
-
-                calculateUserCategoryCount()
-                calculateFollowersDistribution()
-
-                printfn "starceleb : %d" starCelebrityCount
-                printfn "celeb : %d" celebrityCount
-                printfn "influencers : %d" influencerCount
-                printfn "publicFig : %d" publicFigureCount
-                printfn "commonMen : %d" commonMenCount
-
-                for entry in followersDistribution do
-                    printfn "%A : %A" entry.Key entry.Value
-            | :? string as request -> 
-                
-                let data = request.Split "|"
-
-                match data.[0] with
-                | Messages.REGISTER_USERS ->
-                    [1 .. totalUsers]
-                    |> List.iter(fun i ->   let name = "Client" + (i |> string)
-                                            let client = spawn system name Client
-                                            clients.Add(client)
-                                            let registerUser: RegisterUser = { Id = i; }
-                                            client <! registerUser)
-                    
-                    |> ignore
-                | Messages.REGISTER_USER_SUCCESS ->
-                    numberOfUsersCreated <- numberOfUsersCreated + 1
-                    if numberOfUsersCreated = totalUsers then
-                        [1 .. totalUsers]
-                        |> List.iter(fun i ->   let followUser: FollowUser = { Id = i; }
-                                                clients.[i-1] <! followUser)
-                        |> ignore
-                | Messages.FOLLOW_USER_SUCCESS ->
-                    followerCount <- followerCount + 1
-                    printf "%d|" followerCount
-                | _ -> printfn "Invalid message %s at supervisor." request
-            | _ -> 
-                let failureMessage = "Invalid message at Supervisor!"
-                failwith failureMessage
-            return! loop()
-        }
-        loop()
-
-    let CreateUsers(numberOfUsers: int) = 
-        supervisor <- spawn system "Supervisor" Supervisor
-        
-        let input: InitInfo = { NumberOfUsers = numberOfUsers; }
-        supervisor <! input
-        supervisor <! Messages.REGISTER_USERS
-
-        Console.ReadLine() |> ignore
-        
-        //let response = Async.RunSynchronously(supervisor <? Messages.REGISTER_USERS)
-        //printfn "%A" response
+let args = Environment.GetCommandLineArgs()
+CreateUsers(args.[3] |> int)

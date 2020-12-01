@@ -1,15 +1,25 @@
 #r "nuget: Akka.FSharp"
 #r "nuget: Akka.Remote"
-#load @"./Messages.fsx"
+
+#load @"./MessageTypes.fsx"
 
 open Akka.Actor
 open Akka.FSharp
+open Akka.Remote
 open Akka.Configuration
 
 open System
 open System.Collections.Generic
 
-open Messages
+open MessageTypes
+
+type BootServer = {
+    BootMessage: string;
+}
+
+type ShutdownServer = {
+    ShutdownMessage: string;
+}
 
 type Tweet = {
     Id: int;
@@ -24,8 +34,8 @@ type User = {
     FirstName: string;
     LastName: string;
     TweetHead: Tweet option;
+    Followers: HashSet<int>;
     FollowingTo: HashSet<int>;
-    HashtagsFollowed: HashSet<string>;
 }
 
 // Remote Configuration
@@ -35,89 +45,87 @@ let configuration =
             actor.provider = ""Akka.Remote.RemoteActorRefProvider, Akka.Remote""
             remote.helios.tcp {
                 port = 5555
-                hostname = ""127.0.0.1""
+                hostname = localhost
             }
         }")
 
-let system = System.create "System" configuration
+let system = ActorSystem.Create("Twitter", configuration)
 
-let Server = 
-    spawn system "server"
-    <| fun mailbox -> 
-        // User Id -> User Instance mapping
-        let users = new Dictionary<int, User>()
+type Server() =
+    inherit Actor()
+    // User Id -> User Instance mapping
+    let users = new Dictionary<int, User>()
 
-        // Tweet Id -> Tweet Instance mapping
-        let tweets = new Dictionary<int, Tweet>()
-    
-        // User Handle -> User Id mapping
-        let handles = new Dictionary<string, int>()
-    
-        // Hashtag -> List<Tweet Id> mapping, for searching tweets having a specific hashtag
-        let hashtags = new Dictionary<string, List<int>>()
-    
-        // User Id -> List<Tweet Id> mapping, for searching tweets where user is mentioned
-        let mentions = new Dictionary<int, List<int>>()
-        
-        let rec loop() = 
-            actor {
-                let! message = mailbox.Receive()
-                // printfn "%A" message
-                match box message with 
-                | :? string as request ->
-                    let data = request.Split "|"
-                    
-                    match data.[0] with
-                    | Messages.REGISTER_USER_REQUEST ->
-                        try 
-                            let userInstance: User = {
-                                Id = users.Count + 1;
-                                Handle = data.[1];
-                                FirstName = data.[2];
-                                LastName = data.[3];
-                                TweetHead = None;
-                                FollowingTo = new HashSet<int>();
-                                HashtagsFollowed = new HashSet<string>();
-                            }
-                            
-                            users.Add((userInstance.Id, userInstance))
+    // Tweet Id -> Tweet Instance mapping
+    let tweets = new Dictionary<int, Tweet>()
 
-                            handles.Add((userInstance.Handle, userInstance.Id))
+    // User Handle -> User Id mapping
+    let handles = new Dictionary<string, int>()
 
-                            let response = 
-                                Messages.REGISTER_USER_RESPONSE + "|" + 
-                                (userInstance.Id |> string) + "|" +
-                                userInstance.Handle + "|" + 
-                                userInstance.FirstName + "|" +
-                                userInstance.LastName + "|true"
-                            mailbox.Sender() <! response
-                        with
-                            :? System.Exception -> 
-                            let response = Messages.REGISTER_USER_RESPONSE + "|0|" + data.[1] + "|||false"
-                            mailbox.Sender() <! response
-                    | Messages.FOLLOW_USER_REQUEST ->
-                        let followerId = data.[1] |> int
-                        let followeeId = data.[2] |> int
-                        users.[followerId].FollowingTo.Add(followeeId) |> ignore
-                        let response = Messages.FOLLOW_USER_RESPONSE + "|true"
-                        mailbox.Sender() <! response
-                    | Messages.UNFOLLOW_USER_REQUEST ->
-                        let followerId = data.[1] |> int
-                        let followeeId = data.[2] |> int
-                        users.[followerId].FollowingTo.Remove(followeeId) |> ignore
-                        let response = Messages.UNFOLLOW_USER_RESPONSE + "|true"
-                        mailbox.Sender() <! response
-                    | _ -> printfn "Invalid message %s at server." request
-                | _ -> 
-                    let failureMessage = "Invalid message at Server!"
-                    failwith failureMessage
+    // Hashtag -> List<Tweet Id> mapping, for searching tweets having a specific hashtag
+    let hashtags = new Dictionary<string, List<int>>()
+
+    // User Id -> List<Tweet Id> mapping, for searching tweets where user is mentioned
+    let mentions = new Dictionary<int, List<int>>()
+
+    override x.OnReceive (message: obj) =   
+        match message with 
+        | :? BootServer as bootInfo -> 
+            printfn "%s" bootInfo.BootMessage
+        | :? RegisterUserRequest as request ->
+            try 
+                let userInstance: User = {
+                    Id = users.Count + 1;
+                    Handle = request.Handle;
+                    FirstName = request.FirstName;
+                    LastName = request.LastName;
+                    TweetHead = None;
+                    Followers = new HashSet<int>();
+                    FollowingTo = new HashSet<int>();
+                }
                 
-                return! loop()
-            }
-        loop()
+                users.Add((userInstance.Id, userInstance))
 
-printfn "Server is up and running!"
+                handles.Add((userInstance.Handle, userInstance.Id))
+                
+                let response: RegisterUserResponse = {
+                    Id = userInstance.Id;
+                    Handle = userInstance.Handle;
+                    FirstName = userInstance.FirstName;
+                    LastName = userInstance.LastName;
+                    Success = true;
+                }
+                x.Sender.Tell response
+            with
+                :? System.ArgumentException -> 
+                    let response: RegisterUserResponse = {
+                        Id = -1;
+                        Handle = request.Handle;
+                        FirstName = "";
+                        LastName = "";
+                        Success = false;
+                    }
+                    x.Sender.Tell response
+        | :? FollowUserRequest as request -> 
+            users.[request.FollowerId].FollowingTo.Add(request.FolloweeId) |> ignore
+            users.[request.FolloweeId].Followers.Add(request.FollowerId) |> ignore
+            let response: FollowUserResponse = { Success = true; }
+            x.Sender.Tell response
+        | :? UnfollowUserRequest as request ->
+            users.[request.FollowerId].FollowingTo.Remove(request.FolloweeId) |> ignore
+            users.[request.FolloweeId].Followers.Remove(request.FollowerId) |> ignore
+            let response: UnfollowUserResponse = { Success = true; }
+            x.Sender.Tell response
+        | :? PrintInfo as request -> 
+            let user = users.[request.Id]
+            printfn "%d | %s | %s | %s | %d" user.Id user.Handle user.FirstName user.LastName user.Followers.Count
+        | _ -> ()
 
-Console.ReadLine() |> ignore
+let server = system.ActorOf(Props(typedefof<Server>), "Server")
 
-system.Terminate() |> ignore
+let (task:Async<ShutdownServer>) = (server <? { BootMessage = "Server is running!"; })
+
+let response = Async.RunSynchronously (task)
+printfn "%A" response
+
+server.Tell(PoisonPill.Instance);
