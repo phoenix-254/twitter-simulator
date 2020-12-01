@@ -25,8 +25,11 @@ type ShutdownServer = {
 type Tweet = {
     Id: int;
     Content: string;
-    CreatedTime: int;
-    NextTweet: Tweet option;
+}
+
+type TweetRef = {
+    TweetId: int;
+    NextTweet: TweetRef option
 }
 
 type User = {
@@ -34,7 +37,7 @@ type User = {
     Handle: string;
     FirstName: string;
     LastName: string;
-    TweetHead: Tweet option;
+    TweetHead: TweetRef option;
     Followers: HashSet<int>;
     FollowingTo: HashSet<int>;
 }
@@ -69,9 +72,6 @@ type Server() =
     // User Id -> List<Tweet Id> mapping, for searching tweets where user is mentioned
     let mentions = new Dictionary<int, List<int>>()
 
-    // Reference to the current time
-    let mutable time = 0
-
     // Regex patterns
     let mentionPattern = @"@\w+"
     let hashtagPattern = @"#\w+"
@@ -80,9 +80,7 @@ type Server() =
         let ans = new HashSet<string>()
         let matches = Regex.Matches(text, regex)
         for m in matches do
-            let ms = m.Value.Split sep |> Array.filter(fun i ->  (String.length i) > 0)
-            for i in ms do
-                ans.Add(i) |> ignore
+            ans.Add(m.Value) |> ignore
         ans
 
     override x.OnReceive (message: obj) =   
@@ -102,6 +100,8 @@ type Server() =
                 }
                 
                 users.Add((user.Id, user))
+                users.[user.Id].FollowingTo.Add(user.Id) |> ignore
+                users.[user.Id].Followers.Add(user.Id) |> ignore
 
                 handles.Add((user.Handle, user.Id))
                 
@@ -134,15 +134,14 @@ type Server() =
             let response: UnfollowUserResponse = { Success = true; }
             x.Sender.Tell response
         | :? PostTweetRequest as request -> 
-            printfn "Post tweet: %A" request
-            time <- time + 1
             let tweet: Tweet = {
                 Id = tweets.Count + 1;
                 Content = request.Content;
-                CreatedTime = time;
-                NextTweet = None;
             }
             tweets.Add((tweet.Id, tweet))
+
+            let tweetRef: TweetRef = { TweetId = tweet.Id; NextTweet = users.[request.UserId].TweetHead; }
+            (users.[request.UserId].TweetHead = Some tweetRef) |> ignore
 
             let tweetMentions = findAllMatches(request.Content, mentionPattern, "@")
             for mention in tweetMentions do
@@ -155,12 +154,6 @@ type Server() =
                         tweetIdList.Add(tweet.Id)
                         mentions.Add((userId, tweetIdList))
 
-            for entry in mentions do
-                printf "%A : [" entry.Key
-                for i in entry.Value do
-                    printf "%A; " i
-                printf "]\n"
-
             let tweetHashtags = findAllMatches(request.Content, hashtagPattern, "#")
             for tag in tweetHashtags do
                 if hashtags.ContainsKey tag then
@@ -170,13 +163,6 @@ type Server() =
                     tweetIdList.Add(tweet.Id)
                     hashtags.Add((tag, tweetIdList))
 
-            for entry in hashtags do
-                printf "%A : [" entry.Key
-                for i in entry.Value do
-                    printf "%A; " i
-                printf "]\n"
-
-            // Send response
             let tweetSuccess = tweets.ContainsKey(tweet.Id)
             let response: PostTweetResponse = {
                 UserId = request.UserId;
@@ -184,7 +170,6 @@ type Server() =
                 Content = request.Content;
                 Success = tweetSuccess;
             }
-
             x.Sender.Tell response
         | :? PrintInfo as request -> 
             let user = users.[request.Id]
