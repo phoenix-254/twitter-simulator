@@ -154,14 +154,9 @@ type Server() =
             tweets.Add((tweet.Id, tweet))
 
             let tweetRef: TweetRef = { TweetId = tweet.Id; NextTweet = users.[request.UserId].TweetHead; }
-            let newUser: User = { 
-                Id = request.UserId;
-                Handle = users.[request.UserId].Handle;
-                FirstName = users.[request.UserId].FirstName;
-                LastName = users.[request.UserId].LastName;
-                TweetHead = Some tweetRef;
-                Followers = users.[request.UserId].Followers;
-                FollowingTo = users.[request.UserId].FollowingTo;
+            let oldUser = users.[request.UserId]
+            let newUser: User = { Id = oldUser.Id; Handle = oldUser.Handle; FirstName = oldUser.FirstName; LastName = oldUser.LastName;
+                TweetHead = Some tweetRef; Followers = oldUser.Followers; FollowingTo = oldUser.FollowingTo;
             }
             users.[request.UserId] <- newUser
 
