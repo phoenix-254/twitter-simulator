@@ -25,6 +25,71 @@ type CreateFollowersSuccess = { FakeProp: int; }
 type PostTweet = { Id: int; Content: string; }
 type PostTweetSuccess = { Id: int; }
 
+
+// 60 hashtags
+let hashtags = seq {
+    yield "#love";
+    yield "#followback";
+    yield "#Twitterers"; 
+    yield "#tweegram"; 
+    yield "#photooftheday";
+    yield "#20likes";
+    yield "#amazing";
+    yield "#smile";
+    yield "#follow4follow";
+    yield "#like4like";
+    yield "#look";
+    yield "#instalike";
+    yield "#igers";
+    yield "#picoftheday";
+    yield "#food";
+    yield "#instadaily";
+    yield "#instafollow";
+    yield "#followme";
+    yield "#lmao";
+    yield "#instagood";
+    yield "#bestoftheday";
+    yield "#instacool";
+    yield "#follow";
+    yield "#colorful";
+    yield "#style";
+    yield "#swag";
+    yield "#thanksgiving";
+    yield "#thanks" 
+    yield "#giving";
+    yield "#socialenvy";
+    yield "#turkey";
+    yield "#turkeyday";
+    yield "#food";
+    yield "#foodporn";
+    yield "#holiday";
+    yield "#family";
+    yield "#friends";
+    yield "#love";
+    yield "#instagood";
+    yield "#photooftheday";
+    yield "#happythanksgiving";
+    yield "#celebrate";
+    yield "#stuffing";
+    yield "#feast";
+    yield "#thankful";
+    yield "#blessed";
+    yield "#fun";
+    yield "#happyholidays";
+    yield "#holidays";
+    yield "#holiday";
+    yield "#vacation";
+    yield "#winter2016";
+    yield "#2016";
+    yield "#2017";
+    yield "#happyholidays2016";
+    yield "#presents";
+    yield "#parties";
+    yield "#fun";
+    yield "#happy";
+    yield "#family";
+    yield "#love";
+}
 // Remote Configuration
 let configuration = 
     ConfigurationFactory.ParseString(
@@ -79,10 +144,17 @@ let calculateFollowersDistribution() =
     followersDistribution.Add(([|prevEnd; prevEnd + celebrityCount;|], [|percentOf(totalUsers, celebrityFollowersRange.[0]); percentOf(totalUsers, celebrityFollowersRange.[1]);|]))
     prevEnd <- prevEnd + celebrityCount
 
-    followersDistribution.Add(([|prevEnd; prevEnd + influencerCount;|], [|percentOf(totalUsers, influencerFollowersRange.[0]); percentOf(totalUsers, influencerFollowersRange.[1]);|]))
+    followersDistribution.Add(
+        ([|prevEnd; prevEnd + influencerCount;|], [|percentOf(totalUsers, influencerFollowersRange.[0]);
+        percentOf(totalUsers, influencerFollowersRange.[1]);|])
+    )
     prevEnd <- prevEnd + influencerCount
     
-    followersDistribution.Add(([|prevEnd; totalUsers + 1;|], [|percentOf(totalUsers, commonMenFollowersRange.[0]); percentOf(totalUsers, commonMenFollowersRange.[1]);|]))
+    followersDistribution.Add(
+        ([|prevEnd; totalUsers + 1;|], [|percentOf(totalUsers, commonMenFollowersRange.[0]); 
+        percentOf(totalUsers, commonMenFollowersRange.[1]);|])
+    )
+    
 
 type Client() = 
     inherit Actor()
@@ -116,6 +188,14 @@ type Client() =
 
     let getRandomFollowerPair() = 
         [|random.Next(1, totalUsers + 1); userId;|]
+
+    let generateTweet(userId: int) =
+        // use user id range to generate tweet frequency 
+        // Users in celebrity range will tweet more frequently than other users
+        // use a random function to select a number from 1-10 and then use this number to randomly pick a hashtag from the sequence
+        // for the tweet generation, check the users tweet dictionary size and post a tweet "tweet test " + tweetdictionary size++ 
+        // Put user mentions by checking the following map and get a random user from that map 
+        "test"
 
     override x.OnReceive (message: obj) =
         match message with
