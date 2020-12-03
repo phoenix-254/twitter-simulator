@@ -2,17 +2,21 @@
 #r "nuget: Akka.Remote"
 
 #load @"./MessageTypes.fsx"
+#load @"./PriorityQueue.fsx"
 
 open Akka.Actor
 open Akka.FSharp
 open Akka.Remote
 open Akka.Configuration
-open System.Text.RegularExpressions
 
 open System
 open System.Collections.Generic
+open System.Text.RegularExpressions
+
+open Microsoft.FSharp.Core
 
 open MessageTypes
+open PriorityQueue
 
 type BootServer = {
     BootMessage: string;
@@ -25,12 +29,20 @@ type ShutdownServer = {
 type Tweet = {
     Id: int;
     Content: string;
+    PostedBy: int;
 }
 
-type TweetRef = {
-    TweetId: int;
-    NextTweet: TweetRef option
-}
+[<CustomComparison; StructuralEquality>]
+type TweetRef = { TweetId: int;
+                  NextTweet: TweetRef option; }
+                    interface IComparable<TweetRef> with
+                        member this.CompareTo other = 
+                            compare this.TweetId other.TweetId
+                    interface IComparable with
+                        member this.CompareTo(obj: obj) = 
+                            match obj with
+                            | :? TweetRef -> compare this.TweetId (unbox<TweetRef> obj).TweetId
+                            | _ -> invalidArg "obj" "Must be of type TweetRef"
 
 type User = {
     Id: int;
@@ -137,11 +149,21 @@ type Server() =
             let tweet: Tweet = {
                 Id = tweets.Count + 1;
                 Content = request.Content;
+                PostedBy = request.UserId;
             }
             tweets.Add((tweet.Id, tweet))
 
             let tweetRef: TweetRef = { TweetId = tweet.Id; NextTweet = users.[request.UserId].TweetHead; }
-            (users.[request.UserId].TweetHead = Some tweetRef) |> ignore
+            let newUser: User = { 
+                Id = request.UserId;
+                Handle = users.[request.UserId].Handle;
+                FirstName = users.[request.UserId].FirstName;
+                LastName = users.[request.UserId].LastName;
+                TweetHead = Some tweetRef;
+                Followers = users.[request.UserId].Followers;
+                FollowingTo = users.[request.UserId].FollowingTo;
+            }
+            users.[request.UserId] <- newUser
 
             let tweetMentions = findAllMatches(request.Content, mentionPattern, "@")
             for mention in tweetMentions do
@@ -169,6 +191,34 @@ type Server() =
                 TweetId = tweet.Id;
                 Content = request.Content;
                 Success = tweetSuccess;
+            }
+            x.Sender.Tell response
+        | :? GetFeedRequest as request -> 
+            let feed = new HashSet<TweetData>()
+            if users.ContainsKey(request.UserId) then
+                let pq = new PriorityQueue<TweetRef>([], false)
+                
+                let followed = users.[request.UserId].FollowingTo
+                for userId in followed do
+                    if users.[userId].TweetHead.IsSome then 
+                        pq.Enqueue(users.[userId].TweetHead.Value)
+
+                let mutable n = request.NumberOfTweets
+                while not pq.IsEmpty && n > 0 do
+                    let tweetRef = pq.Dequeue()
+                    let tweetData: TweetData = {
+                        Id = tweetRef.TweetId;
+                        Content = tweets.[tweetRef.TweetId].Content;
+                        PostedBy = users.[tweets.[tweetRef.TweetId].PostedBy].Handle;
+                    }
+                    feed.Add(tweetData) |> ignore
+                    if tweetRef.NextTweet.IsSome then
+                        pq.Enqueue(tweetRef.NextTweet.Value)
+                    n <- n-1
+
+            let response: GetFeedResponse = {
+                UserId = request.UserId;
+                Tweets = feed;
             }
             x.Sender.Tell response
         | :? PrintInfo as request -> 

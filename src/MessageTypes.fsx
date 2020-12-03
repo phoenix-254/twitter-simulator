@@ -1,3 +1,5 @@
+open System.Collections.Generic
+
 type RegisterUserRequest = {
     Handle: string;
     FirstName: string;
@@ -40,6 +42,22 @@ type PostTweetResponse = {
     TweetId: int;
     Content: string;
     Success: bool;
+}
+
+type GetFeedRequest = {
+    UserId: int;
+    NumberOfTweets: int;
+}
+
+type TweetData = { 
+    Id: int;
+    Content: string;
+    PostedBy: string; 
+}
+
+type GetFeedResponse = {
+    UserId: int;
+    Tweets: HashSet<TweetData>;
 }
 
 type PrintInfo = {
