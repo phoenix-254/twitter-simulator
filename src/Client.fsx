@@ -26,6 +26,9 @@ type InitiateTweeting = { NumberOfTweets: int; }
 type PostTweet = { Content: string; }
 type FinishTweeting = { Id: int; }
 
+type UpdateUserStatus = { Status: int; }
+type SimulateUserStatusUpdate = { FakeSimulateStatusProp: int; }
+
 let hashtags = [
     "#love"; "#followback"; "#Twitterers"; "#tweegram"; "#photooftheday";
     "#20likes"; "#amazing"; "#smile"; "#follow4follow"; "#like4like"; "#look";
@@ -125,7 +128,12 @@ type Client() =
     let mutable tweetsToPost = 0
     let mutable tweetsPosted = 0
 
+    // User online/offline status, 0: offline, 1: online
+    let mutable status = 0
+
     let random = Random()
+
+    let myFeed = new HashSet<TweetData>()
 
     let upperCase = [|'A' .. 'Z'|]
     let lowerCase = [|'a' .. 'z'|]
@@ -164,6 +172,7 @@ type Client() =
             server.Tell request
         | :? RegisterUserResponse as response -> 
             if response.Success then 
+                status <- 1
                 userId <- response.Id
                 handle <- response.Handle
                 firstName <- response.FirstName
@@ -195,13 +204,9 @@ type Client() =
             else ()
         | :? InitiateTweeting as request -> 
             tweetsToPost <- request.NumberOfTweets
-            let self = x.Self
-            [1 .. request.NumberOfTweets]
-            |> List.iter(fun i ->   let tweetReq: PostTweet = { 
-                                        Content = generateRandomTweet(); 
-                                    }
-                                    self.Tell tweetReq)
-            |> ignore
+            if tweetsPosted < tweetsToPost then
+                let tweetReq: PostTweet = { Content = generateRandomTweet(); }
+                x.Self.Tell tweetReq
         | :? PostTweet as request -> 
             let req: PostTweetRequest = {
                 UserId = userId;
@@ -213,8 +218,13 @@ type Client() =
             if tweetsPosted = tweetsToPost then
                 let req: FinishTweeting = { Id = userId; }
                 supervisor.Tell req
+            else 
+                let tweetReq: PostTweet = { Content = generateRandomTweet(); }
+                x.Self.Tell tweetReq
         | :? GetFeedResponse as response -> 
             printfn "%A" response
+        | :? UpdateUserStatus as request -> 
+            status <- request.Status
         | :? PrintInfo as req -> 
             server.Tell req
         | _ -> ()
@@ -267,9 +277,15 @@ type Supervisor() =
             |> List.iter (fun id -> let req: CreateFollowers = { FakeProp = 0; }
                                     clients.[id-1].Tell req)
             |> ignore
+        | :? SimulateUserStatusUpdate as fake -> 
+            let randomId = random.Next(clients.Count)
+            clients.[randomId].Tell { Status = random.Next(2); }
+            x.Self.Tell { FakeSimulateStatusProp = 0; }
         | :? CreateFollowersSuccess as fake -> 
             userCountWithFollowersCreated <- userCountWithFollowersCreated + 1
             if userCountWithFollowersCreated = totalUsers then
+                x.Self.Tell { FakeSimulateStatusProp = 0; }
+
                 startTime <- DateTime.Now
                 [1 .. totalUsers]
                 |> List.iter (fun id -> let req: InitiateTweeting = { NumberOfTweets = getTweetCountForUser(id); }
