@@ -41,7 +41,7 @@ eg: `dotnet fsi --langversion:preview Client.fsx 1000`
 
 #### For 1000 Users
 
-|             | #    | #Followers | Avg. #Followers | #Tweets + #Retweets | Avg. #Tweets |
+|             |#Users| #Followers | Avg. #Followers | #Tweets + #Retweets | Avg. #Tweets |
 |       :-:   | :-:  | :-:        | :-:             | :-:                 | :-:          |
 | Total       | 1000 | 2577       | -               | 24785               | -            |
 | Celebrities | 1    | 277        | 277             | 244                 | 244          |
@@ -57,7 +57,7 @@ Number of tweets handles per second :- 1128
 
 #### For 5000 Users
 
-|             | #    | #Followers | Avg. #Followers | #Tweets + #Retweets | Avg. #Tweets |
+|             |#Users| #Followers | Avg. #Followers | #Tweets + #Retweets | Avg. #Tweets |
 |       :-:   | :-:  | :-:        | :-:             | :-:                 | :-:          |
 | Total       | 5000 | 67894      | -               | 194899              | -            |
 | Celebrities | 2    | 2090       | 1045            | 571                 | 285          |
@@ -73,7 +73,7 @@ Number of tweets handles per second :- 320
 
 #### For 10000 Users
 
-|             | #     | #Followers | Avg. #Followers | #Tweets + #Retweets  | Avg. #Tweets |
+|             | #Users| #Followers | Avg. #Followers | #Tweets + #Retweets  | Avg. #Tweets |
 |       :-:   | :-:   | :-:        | :-:             | :-:                  | :-:          |
 | Total       | 10000 | 280825     | -               | 447821               | -            |
 | Celebrities | 5     | 10312      | 2062            | 1539                 | 308          |
