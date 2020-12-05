@@ -4,13 +4,12 @@
     <TargetFramework>netcoreapp3.1</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Client.fsx"/>
-    <Compile Include="Server.fsx"/>
-    <Compile Include="MessageTypes.fsx"/>
-    <Compile Include="PriorityQueue.fsx"/>
+    <Compile Include="Client.fsx" />
+    <Compile Include="Server.fsx" />
+    <Compile Include="MessageTypes.fsx" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Akka.FSharp" Version="1.4.10"/>
-    <PackageReference Include="Akka.Remote" Version="1.4.10"/>
+    <PackageReference Include="Akka.FSharp" Version="1.4.10" />
+    <PackageReference Include="Akka.Remote" Version="1.4.10" />
   </ItemGroup>
 </Project>

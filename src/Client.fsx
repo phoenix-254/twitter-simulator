@@ -24,7 +24,7 @@ type CreateFollowersSuccess = { FakeProp: int; }
 
 type InitiateTweeting = { NumberOfTweets: int; }
 type PostTweet = { Content: string; }
-type FinishTweeting = { Id: int; }
+type FinishTweeting = { Id: int; RetweetCount: int }
 
 type UpdateUserStatus = { Status: int; }
 type SimulateUserStatusUpdate = { FakeSimulateStatusProp: int; }
@@ -49,7 +49,7 @@ let configuration =
         @"akka {
             actor.provider = ""Akka.Remote.RemoteActorRefProvider, Akka.Remote""
             remote.helios.tcp {
-                port = 6666
+                port = 5556
                 hostname = localhost
             }
         }")
@@ -63,18 +63,28 @@ let mutable totalUsers = 0
 
 // User categories
 let mutable celebrityCount: int = 0
-let celebrityPercent: float = 0.5
-let celebrityFollowersRange = [|35.0; 80.0;|]
-let celebrityTweetCountRange = [|50; 80;|]
+let celebrityPercent: float = 0.05
+let celebrityFollowersRange = [|15.0; 30.0;|]
+let celebrityTweetCountRange = [|200; 250;|]
+let celebrityIdRange = new List<int>()
+let mutable celebrityFollowersCount = 0
+let mutable celebrityTweetsCount = 0
 
 let mutable influencerCount: int = 0
-let influencerPercent: float = 11.5
-let influencerFollowersRange = [|5.0; 30.0;|]
-let influencerTweetCountRange = [|30; 50;|]
+let influencerPercent: float = 0.5
+let influencerFollowersRange = [|3.0; 8.0;|]
+let influencerTweetCountRange = [|100; 150;|]
+let influencerIdRange = new List<int>()
+let mutable influencerFollowersCount = 0
+let mutable influencerTweetsCount = 0
 
 let mutable commonMenCount: int = 0
-let commonMenFollowersRange = [|0.0; 1.0;|]
-let commonMenTweetCountRange = [|5; 10;|]
+let commonMenFollowersRange = [|0.0; 0.5;|]
+let commonMenTweetCountRange = [|15; 30;|]
+let mutable commonMenFollowersCount = 0
+let mutable commonMenTweetsCount = 0
+
+let mutable totalNumberOfFollowers = 0
 
 // Followers distribution map
 // [Min, Max] of UserId -> [Min, Max] of followers count
@@ -86,6 +96,7 @@ let tweetCountDistribution = new Dictionary<int[], int[]>()
 
 let hashtagFrequency = 5
 let mentionFrequency = 10
+let retweetFrequency = 25
 
 // Global supervisor actor reference
 let mutable supervisor: IActorRef = null
@@ -97,17 +108,21 @@ let percentOf(number: int, percent: float) =
     ((number |> float) * percent / 100.0) |> int
 
 let calculateUserCategoryCount() = 
-    celebrityCount <- percentOf(totalUsers, celebrityPercent)
-    influencerCount <- percentOf(totalUsers, influencerPercent)
+    celebrityCount <- Math.Max(1, percentOf(totalUsers, celebrityPercent))
+    influencerCount <- Math.Max(3, percentOf(totalUsers, influencerPercent))
     commonMenCount <- totalUsers - (celebrityCount + influencerCount)
 
 let calculateDistributions() = 
     let mutable prevEnd = 1
 
+    celebrityIdRange.Add(prevEnd)
+    celebrityIdRange.Add(prevEnd + celebrityCount)
     followersDistribution.Add(([|prevEnd; prevEnd + celebrityCount;|], [|percentOf(totalUsers, celebrityFollowersRange.[0]); percentOf(totalUsers, celebrityFollowersRange.[1]);|]))
     tweetCountDistribution.Add(([|prevEnd; prevEnd + celebrityCount;|], celebrityTweetCountRange))
     prevEnd <- prevEnd + celebrityCount
 
+    influencerIdRange.Add(prevEnd)
+    influencerIdRange.Add(prevEnd + influencerCount)
     followersDistribution.Add(([|prevEnd; prevEnd + influencerCount;|], [|percentOf(totalUsers, influencerFollowersRange.[0]); percentOf(totalUsers, influencerFollowersRange.[1]);|]))
     tweetCountDistribution.Add(([|prevEnd; prevEnd + influencerCount;|], influencerTweetCountRange))
     prevEnd <- prevEnd + influencerCount
@@ -128,12 +143,17 @@ type Client() =
     let mutable tweetsToPost = 0
     let mutable tweetsPosted = 0
 
+    let mutable retweetCount = 0
+
     // User online/offline status, 0: offline, 1: online
-    let mutable status = 0
+    let mutable status = 1
 
     let random = Random()
 
-    let myFeed = new HashSet<TweetData>()
+    let myFeed = new LinkedList<TweetData>()
+    let maxTweetPerFeed = 100
+
+    let mutable feedReceived = 0
 
     let upperCase = [|'A' .. 'Z'|]
     let lowerCase = [|'a' .. 'z'|]
@@ -151,6 +171,15 @@ type Client() =
         for entry in followersDistribution do
             if (userId >= entry.Key.[0] && userId < entry.Key.[1]) then 
                 count <- random.Next(entry.Value.[0], entry.Value.[1])
+        totalNumberOfFollowers <- totalNumberOfFollowers + 1
+
+        if userId >= celebrityIdRange.[0] && userId < celebrityIdRange.[1] then
+            celebrityFollowersCount <- celebrityFollowersCount + count
+        else if userId >= influencerIdRange.[0] && userId < influencerIdRange.[1] then
+            influencerFollowersCount <- influencerFollowersCount + count
+        else
+            commonMenFollowersCount <- commonMenFollowersCount + count
+
         count
 
     let generateRandomTweet(): string = 
@@ -168,6 +197,7 @@ type Client() =
                 Handle = ("User" + (user.Id |> string));
                 FirstName = generateRandomName();
                 LastName = generateRandomName();
+                ActorRef = x.Self;
             }
             server.Tell request
         | :? RegisterUserResponse as response -> 
@@ -204,7 +234,7 @@ type Client() =
             else ()
         | :? InitiateTweeting as request -> 
             tweetsToPost <- request.NumberOfTweets
-            if tweetsPosted < tweetsToPost then
+            if tweetsPosted < tweetsToPost then  
                 let tweetReq: PostTweet = { Content = generateRandomTweet(); }
                 x.Self.Tell tweetReq
         | :? PostTweet as request -> 
@@ -216,13 +246,24 @@ type Client() =
         | :? PostTweetResponse as response ->
             tweetsPosted <- tweetsPosted + 1
             if tweetsPosted = tweetsToPost then
-                let req: FinishTweeting = { Id = userId; }
+                let req: FinishTweeting = { Id = userId; RetweetCount = retweetCount; }
                 supervisor.Tell req
             else 
                 let tweetReq: PostTweet = { Content = generateRandomTweet(); }
                 x.Self.Tell tweetReq
-        | :? GetFeedResponse as response -> 
-            printfn "%A" response
+        | :? UpdateFeedResponse as response -> 
+            myFeed.AddFirst(response.Tweet) |> ignore
+            if myFeed.Count > maxTweetPerFeed then myFeed.RemoveLast() |> ignore
+            feedReceived <- feedReceived + 1
+            if feedReceived % retweetFrequency = 0 && response.Tweet.PostedById <> userId then
+                retweetCount <- retweetCount + 1
+                let retweetReq: RetweetRequest = {
+                    UserId = userId;
+                    TweetId = response.Tweet.Id;
+                    OriginalUserId = response.Tweet.PostedById;
+                }
+                server.Tell retweetReq
+        | :? RetweetResponse as response -> ()
         | :? UpdateUserStatus as request -> 
             status <- request.Status
         | :? PrintInfo as req -> 
@@ -248,8 +289,16 @@ type Supervisor() =
         let mutable count = 0
         for entry in tweetCountDistribution do
             if (userId >= entry.Key.[0] && userId < entry.Key.[1]) then 
-                count <- random.Next(entry.Value.[0], entry.Value.[1])
+                count <- random.Next(entry.Value.[0], entry.Value.[1] + 1)
         totalNumberOfTweets <- totalNumberOfTweets + count
+
+        if userId >= celebrityIdRange.[0] && userId < celebrityIdRange.[1] then
+            celebrityTweetsCount <- celebrityTweetsCount + count
+        else if userId >= influencerIdRange.[0] && userId < influencerIdRange.[1] then
+            influencerTweetsCount <- influencerTweetsCount + count
+        else
+            commonMenTweetsCount <- commonMenTweetsCount + count
+
         count
 
     override x.OnReceive (message: obj) = 
@@ -284,21 +333,50 @@ type Supervisor() =
         | :? CreateFollowersSuccess as fake -> 
             userCountWithFollowersCreated <- userCountWithFollowersCreated + 1
             if userCountWithFollowersCreated = totalUsers then
-                x.Self.Tell { FakeSimulateStatusProp = 0; }
+                // x.Self.Tell { FakeSimulateStatusProp = 0; }
+                printfn "-------------------------------------------------\n"
+                printfn "Total number of users: %d" totalUsers
+                printfn "Total number of celebrities: %d" celebrityCount
+                printfn "Total number of influencers: %d" influencerCount
+                printfn "Total number of common men: %d" commonMenCount
 
+                printfn "\n-------------------------------------------------\n"
+                printfn "------------Follower Distribution------------"
+                printfn "Total follower for celebrities: %d" celebrityFollowersCount
+                printfn "Total follower for influencers: %d" influencerFollowersCount
+                printfn "Total follower for common men: %d" commonMenFollowersCount
+                
                 startTime <- DateTime.Now
                 [1 .. totalUsers]
                 |> List.iter (fun id -> let req: InitiateTweeting = { NumberOfTweets = getTweetCountForUser(id); }
                                         clients.[id-1].Tell req)
                 |> ignore
         | :? FinishTweeting as response -> 
+            totalNumberOfTweets <- totalNumberOfTweets + response.RetweetCount
+            if response.Id >= celebrityIdRange.[0] && response.Id < celebrityIdRange.[1] then
+                celebrityTweetsCount <- celebrityTweetsCount + response.RetweetCount
+            else if response.Id >= influencerIdRange.[0] && response.Id < influencerIdRange.[1] then
+                influencerTweetsCount <- influencerTweetsCount + response.RetweetCount
+            else
+                commonMenTweetsCount <- commonMenTweetsCount + response.RetweetCount
+
             userCountWithTweetsPosted <- userCountWithTweetsPosted + 1
             if userCountWithTweetsPosted = totalUsers then
                 endTime <- DateTime.Now
+                
                 let timeTaken = (endTime - startTime).TotalSeconds
+                
+                printfn "\n-------------------------------------------------\n"
+                printfn "------------Tweet Distribution------------"
+                printfn "Total tweets by celebrities: %d" celebrityTweetsCount
+                printfn "Total follower for influencers: %d" influencerTweetsCount
+                printfn "Total follower for common men: %d" commonMenTweetsCount
+
+                printfn "\n-------------------------------------------------\n"
                 printfn "Total tweets made: %d" totalNumberOfTweets
                 printfn "Total time taken: %A seconds" timeTaken
-                printfn "Number of requests per second: %A" (float(totalNumberOfTweets) / timeTaken)
+                printfn "Number of tweets per second: %A\n" (float(totalNumberOfTweets) / timeTaken)
+                
                 let shutdown: Shutdown = { Message = "Done!"; }
                 parent.Tell shutdown
         | _ -> ()

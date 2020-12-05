@@ -1,9 +1,15 @@
+#r "nuget: Akka.FSharp"
+
+open Akka.Actor
+open Akka.FSharp
+
 open System.Collections.Generic
 
 type RegisterUserRequest = {
     Handle: string;
     FirstName: string;
     LastName: string;
+    ActorRef: IActorRef;
 }
 
 type RegisterUserResponse = {
@@ -44,20 +50,25 @@ type PostTweetResponse = {
     Success: bool;
 }
 
-type GetFeedRequest = {
-    UserId: int;
-    NumberOfTweets: int;
-}
-
 type TweetData = { 
     Id: int;
     Content: string;
+    PostedById: int;
     PostedBy: string; 
 }
 
-type GetFeedResponse = {
+type UpdateFeedResponse = {
+    Tweet: TweetData;
+}
+
+type RetweetRequest = {
     UserId: int;
-    Tweets: HashSet<TweetData>;
+    TweetId: int;
+    OriginalUserId: int;
+}
+
+type RetweetResponse = {
+    Success: bool;
 }
 
 type PrintInfo = {

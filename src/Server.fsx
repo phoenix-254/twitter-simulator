@@ -2,7 +2,6 @@
 #r "nuget: Akka.Remote"
 
 #load @"./MessageTypes.fsx"
-#load @"./PriorityQueue.fsx"
 
 open Akka.Actor
 open Akka.FSharp
@@ -16,7 +15,6 @@ open System.Text.RegularExpressions
 open Microsoft.FSharp.Core
 
 open MessageTypes
-open PriorityQueue
 
 type BootServer = {
     BootMessage: string;
@@ -32,26 +30,20 @@ type Tweet = {
     PostedBy: int;
 }
 
-[<CustomComparison; StructuralEquality>]
-type TweetRef = { TweetId: int;
-                  NextTweet: TweetRef option; }
-                    interface IComparable<TweetRef> with
-                        member this.CompareTo other = 
-                            compare this.TweetId other.TweetId
-                    interface IComparable with
-                        member this.CompareTo(obj: obj) = 
-                            match obj with
-                            | :? TweetRef -> compare this.TweetId (unbox<TweetRef> obj).TweetId
-                            | _ -> invalidArg "obj" "Must be of type TweetRef"
-
 type User = {
     Id: int;
     Handle: string;
     FirstName: string;
     LastName: string;
-    TweetHead: TweetRef option;
+    Tweets: List<int>;
     Followers: HashSet<int>;
     FollowingTo: HashSet<int>;
+    ActorRef: IActorRef;
+}
+
+type TweetRef = { 
+    TweetId: int;
+    NextTweet: TweetRef option; 
 }
 
 // Remote Configuration
@@ -106,9 +98,10 @@ type Server() =
                     Handle = request.Handle;
                     FirstName = request.FirstName;
                     LastName = request.LastName;
-                    TweetHead = None;
+                    Tweets = new List<int>();
                     Followers = new HashSet<int>();
                     FollowingTo = new HashSet<int>();
+                    ActorRef = request.ActorRef;
                 }
                 
                 users.Add((user.Id, user))
@@ -153,17 +146,23 @@ type Server() =
             }
             tweets.Add((tweet.Id, tweet))
 
-            let tweetRef: TweetRef = { TweetId = tweet.Id; NextTweet = users.[request.UserId].TweetHead; }
-            let oldUser = users.[request.UserId]
-            let newUser: User = { Id = oldUser.Id; Handle = oldUser.Handle; FirstName = oldUser.FirstName; LastName = oldUser.LastName;
-                TweetHead = Some tweetRef; Followers = oldUser.Followers; FollowingTo = oldUser.FollowingTo;
-            }
-            users.[request.UserId] <- newUser
+            users.[request.UserId].Tweets.Add(tweet.Id) |> ignore
 
             let tweetMentions = findAllMatches(request.Content, mentionPattern, "@")
             for mention in tweetMentions do
                 if handles.ContainsKey mention then
                     let userId = handles.[mention]
+                    
+                    // Send tweet update
+                    let tweet: TweetData = { 
+                        Id = tweet.Id; 
+                        Content = request.Content; 
+                        PostedBy = users.[request.UserId].Handle;
+                        PostedById = request.UserId; 
+                    }
+                    let updateFeedMsg: UpdateFeedResponse = { Tweet = tweet; }
+                    users.[userId].ActorRef.Tell updateFeedMsg
+                    
                     if mentions.ContainsKey userId then
                         mentions.[userId].Add(tweet.Id)
                     else 
@@ -180,6 +179,18 @@ type Server() =
                     tweetIdList.Add(tweet.Id)
                     hashtags.Add((tag, tweetIdList))
 
+            // Send tweet update
+            let followers = users.[request.UserId].Followers
+            for follower in followers do 
+                let tweet: TweetData = { 
+                    Id = tweet.Id; 
+                    Content = request.Content; 
+                    PostedBy = users.[request.UserId].Handle; 
+                    PostedById = request.UserId; 
+                }
+                let updateFeedMsg: UpdateFeedResponse = { Tweet = tweet; }
+                users.[follower].ActorRef.Tell updateFeedMsg
+
             let tweetSuccess = tweets.ContainsKey(tweet.Id)
             let response: PostTweetResponse = {
                 UserId = request.UserId;
@@ -188,33 +199,20 @@ type Server() =
                 Success = tweetSuccess;
             }
             x.Sender.Tell response
-        | :? GetFeedRequest as request -> 
-            let feed = new HashSet<TweetData>()
-            if users.ContainsKey(request.UserId) then
-                let pq = new PriorityQueue<TweetRef>([], false)
-                
-                let followed = users.[request.UserId].FollowingTo
-                for userId in followed do
-                    if users.[userId].TweetHead.IsSome then 
-                        pq.Enqueue(users.[userId].TweetHead.Value)
+        | :? RetweetRequest as request -> 
+            // Send tweet update to this user's follower
+            let followers = users.[request.UserId].Followers
+            for follower in followers do 
+                let tweet: TweetData = { 
+                    Id = request.TweetId; 
+                    Content = tweets.[request.TweetId].Content;
+                    PostedBy = users.[request.OriginalUserId].Handle; 
+                    PostedById = request.OriginalUserId;
+                }
+                let updateFeedMsg: UpdateFeedResponse = { Tweet = tweet; }
+                users.[follower].ActorRef.Tell updateFeedMsg
 
-                let mutable n = request.NumberOfTweets
-                while not pq.IsEmpty && n > 0 do
-                    let tweetRef = pq.Dequeue()
-                    let tweetData: TweetData = {
-                        Id = tweetRef.TweetId;
-                        Content = tweets.[tweetRef.TweetId].Content;
-                        PostedBy = users.[tweets.[tweetRef.TweetId].PostedBy].Handle;
-                    }
-                    feed.Add(tweetData) |> ignore
-                    if tweetRef.NextTweet.IsSome then
-                        pq.Enqueue(tweetRef.NextTweet.Value)
-                    n <- n-1
-
-            let response: GetFeedResponse = {
-                UserId = request.UserId;
-                Tweets = feed;
-            }
+            let response: RetweetResponse = { Success = true; }
             x.Sender.Tell response
         | :? PrintInfo as request -> 
             let user = users.[request.Id]
