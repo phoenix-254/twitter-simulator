@@ -279,7 +279,7 @@ type Supervisor() =
     let mutable parent: IActorRef = null
 
     let mutable offlineUsersCount = 0
-    let offlineUsersPercent = 20.0
+    let offlineUsersPercent = [|10; 20|]
     
     let mutable userCountWithFollowersCreated = 0
     let mutable userCountWithTweetsPosted = 0
@@ -313,7 +313,7 @@ type Supervisor() =
             totalUsers <- init.TotalUsers
             parent <- x.Sender
 
-            offlineUsersCount <- percentOf(totalUsers, offlineUsersPercent)
+            offlineUsersCount <- percentOf(totalUsers, float(random.Next(offlineUsersPercent.[0], offlineUsersPercent.[1])))
 
             calculateUserCategoryCount()
             calculateDistributions()
