@@ -343,8 +343,11 @@ type Supervisor() =
                 printfn "\n-------------------------------------------------\n"
                 printfn "------------Follower Distribution------------"
                 printfn "Total follower for celebrities: %d" celebrityFollowersCount
+                printfn "Average follower for celebrities: %d" (int(celebrityFollowersCount / celebrityCount))
                 printfn "Total follower for influencers: %d" influencerFollowersCount
+                printfn "Average follower for influencers: %d" (int(influencerFollowersCount / influencerCount))
                 printfn "Total follower for common men: %d" commonMenFollowersCount
+                printfn "Average follower for common men: %d" (int(commonMenFollowersCount / commonMenCount))
                 
                 startTime <- DateTime.Now
                 [1 .. totalUsers]
@@ -368,14 +371,17 @@ type Supervisor() =
                 
                 printfn "\n-------------------------------------------------\n"
                 printfn "------------Tweet Distribution------------"
-                printfn "Total tweets by celebrities: %d" celebrityTweetsCount
-                printfn "Total follower for influencers: %d" influencerTweetsCount
-                printfn "Total follower for common men: %d" commonMenTweetsCount
+                printfn "Total number of tweets by celebrities: %d" celebrityTweetsCount
+                printfn "Average number of tweets by celebrities: %d" (int(celebrityTweetsCount / celebrityCount))
+                printfn "Total number of tweets by influencers: %d" influencerTweetsCount
+                printfn "Average number of tweets by influencers: %d" (int(influencerTweetsCount / influencerCount))
+                printfn "Total number of tweets by common men: %d" commonMenTweetsCount
+                printfn "Average number of tweets by common men: %d" (int(commonMenTweetsCount / commonMenCount))
 
                 printfn "\n-------------------------------------------------\n"
                 printfn "Total tweets made: %d" totalNumberOfTweets
-                printfn "Total time taken: %A seconds" timeTaken
-                printfn "Number of tweets per second: %A\n" (float(totalNumberOfTweets) / timeTaken)
+                printfn "Total time taken: %d seconds" (int(Math.Floor(timeTaken)))
+                printfn "Number of tweets per second: %d\n" (int(Math.Ceiling((float(totalNumberOfTweets) / timeTaken))))
                 
                 let shutdown: Shutdown = { Message = "Done!"; }
                 parent.Tell shutdown
