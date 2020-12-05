@@ -64,6 +64,9 @@ type Server() =
     // User Id -> User Instance mapping
     let users = new Dictionary<int, User>()
 
+    // User Id -> UserStatus (online / offline) mapping
+    let userStatus = new Dictionary<int, bool>()
+
     // Tweet Id -> Tweet Instance mapping
     let tweets = new Dictionary<int, Tweet>()
 
@@ -109,6 +112,8 @@ type Server() =
                 users.[user.Id].Followers.Add(user.Id) |> ignore
 
                 handles.Add((user.Handle, user.Id))
+
+                userStatus.Add((user.Id, true))
                 
                 let response: RegisterUserResponse = {
                     Id = user.Id;
@@ -153,15 +158,15 @@ type Server() =
                 if handles.ContainsKey mention then
                     let userId = handles.[mention]
                     
-                    // Send tweet update
-                    let tweet: TweetData = { 
-                        Id = tweet.Id; 
-                        Content = request.Content; 
-                        PostedBy = users.[request.UserId].Handle;
-                        PostedById = request.UserId; 
-                    }
-                    let updateFeedMsg: UpdateFeedResponse = { Tweet = tweet; }
-                    users.[userId].ActorRef.Tell updateFeedMsg
+                    if userStatus.[userId] then
+                        let tweet: TweetData = { 
+                            Id = tweet.Id; 
+                            Content = request.Content; 
+                            PostedBy = users.[request.UserId].Handle;
+                            PostedById = request.UserId; 
+                        }
+                        let updateFeedMsg: UpdateFeedResponse = { Tweet = tweet; }
+                        users.[userId].ActorRef.Tell updateFeedMsg
                     
                     if mentions.ContainsKey userId then
                         mentions.[userId].Add(tweet.Id)
@@ -179,17 +184,17 @@ type Server() =
                     tweetIdList.Add(tweet.Id)
                     hashtags.Add((tag, tweetIdList))
 
-            // Send tweet update
             let followers = users.[request.UserId].Followers
             for follower in followers do 
-                let tweet: TweetData = { 
-                    Id = tweet.Id; 
-                    Content = request.Content; 
-                    PostedBy = users.[request.UserId].Handle; 
-                    PostedById = request.UserId; 
-                }
-                let updateFeedMsg: UpdateFeedResponse = { Tweet = tweet; }
-                users.[follower].ActorRef.Tell updateFeedMsg
+                if userStatus.[follower] then
+                    let tweet: TweetData = { 
+                        Id = tweet.Id; 
+                        Content = request.Content; 
+                        PostedBy = users.[request.UserId].Handle; 
+                        PostedById = request.UserId; 
+                    }
+                    let updateFeedMsg: UpdateFeedResponse = { Tweet = tweet; }
+                    users.[follower].ActorRef.Tell updateFeedMsg
 
             let tweetSuccess = tweets.ContainsKey(tweet.Id)
             let response: PostTweetResponse = {
@@ -203,17 +208,20 @@ type Server() =
             // Send tweet update to this user's follower
             let followers = users.[request.UserId].Followers
             for follower in followers do 
-                let tweet: TweetData = { 
-                    Id = request.TweetId; 
-                    Content = tweets.[request.TweetId].Content;
-                    PostedBy = users.[request.OriginalUserId].Handle; 
-                    PostedById = request.OriginalUserId;
-                }
-                let updateFeedMsg: UpdateFeedResponse = { Tweet = tweet; }
-                users.[follower].ActorRef.Tell updateFeedMsg
+                if userStatus.[follower] then
+                    let tweet: TweetData = { 
+                        Id = request.TweetId; 
+                        Content = tweets.[request.TweetId].Content;
+                        PostedBy = users.[request.OriginalUserId].Handle; 
+                        PostedById = request.OriginalUserId;
+                    }
+                    let updateFeedMsg: UpdateFeedResponse = { Tweet = tweet; }
+                    users.[follower].ActorRef.Tell updateFeedMsg
 
             let response: RetweetResponse = { Success = true; }
             x.Sender.Tell response
+        | :? UpdateUserStatusRequest as request -> 
+            userStatus.[request.UserId] <- request.IsOnline
         | :? PrintInfo as request -> 
             let user = users.[request.Id]
             printfn "%d | %s | %s | %s | %d | %d" user.Id user.Handle user.FirstName user.LastName user.Followers.Count user.FollowingTo.Count

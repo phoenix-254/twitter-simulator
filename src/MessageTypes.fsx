@@ -71,6 +71,11 @@ type RetweetResponse = {
     Success: bool;
 }
 
+type UpdateUserStatusRequest = {
+    UserId: int;
+    IsOnline: bool;
+}
+
 type PrintInfo = {
     Id: int;
 }

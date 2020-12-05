@@ -26,7 +26,7 @@ type InitiateTweeting = { NumberOfTweets: int; }
 type PostTweet = { Content: string; }
 type FinishTweeting = { Id: int; RetweetCount: int }
 
-type UpdateUserStatus = { Status: int; }
+type UpdateUserStatus = { IsOnline: bool; }
 type SimulateUserStatusUpdate = { FakeSimulateStatusProp: int; }
 
 let hashtags = [
@@ -145,8 +145,7 @@ type Client() =
 
     let mutable retweetCount = 0
 
-    // User online/offline status, 0: offline, 1: online
-    let mutable status = 1
+    let mutable isOnline = true
 
     let random = Random()
 
@@ -187,7 +186,7 @@ type Client() =
         if (tweetsPosted % hashtagFrequency) = 0 then
             tweet <- tweet + " " + hashtags.[random.Next(hashtags.Length)]
         if (tweetsPosted % mentionFrequency) = 0 then
-            tweet <- tweet + " @User" + (random.Next(clients.Count) |> string)
+            tweet <- tweet + " @User" + (random.Next(totalUsers) |> string)
         tweet
 
     override x.OnReceive (message: obj) =
@@ -202,7 +201,6 @@ type Client() =
             server.Tell request
         | :? RegisterUserResponse as response -> 
             if response.Success then 
-                status <- 1
                 userId <- response.Id
                 handle <- response.Handle
                 firstName <- response.FirstName
@@ -249,13 +247,14 @@ type Client() =
                 let req: FinishTweeting = { Id = userId; RetweetCount = retweetCount; }
                 supervisor.Tell req
             else 
-                let tweetReq: PostTweet = { Content = generateRandomTweet(); }
-                x.Self.Tell tweetReq
+                if isOnline then
+                    let tweetReq: PostTweet = { Content = generateRandomTweet(); }
+                    x.Self.Tell tweetReq
         | :? UpdateFeedResponse as response -> 
             myFeed.AddFirst(response.Tweet) |> ignore
             if myFeed.Count > maxTweetPerFeed then myFeed.RemoveLast() |> ignore
             feedReceived <- feedReceived + 1
-            if feedReceived % retweetFrequency = 0 && response.Tweet.PostedById <> userId then
+            if feedReceived % retweetFrequency = 0 && response.Tweet.PostedById <> userId && isOnline then
                 retweetCount <- retweetCount + 1
                 let retweetReq: RetweetRequest = {
                     UserId = userId;
@@ -265,7 +264,11 @@ type Client() =
                 server.Tell retweetReq
         | :? RetweetResponse as response -> ()
         | :? UpdateUserStatus as request -> 
-            status <- request.Status
+            let req: UpdateUserStatusRequest = {
+                UserId = userId;
+                IsOnline = request.IsOnline;
+            }
+            server.Tell req
         | :? PrintInfo as req -> 
             server.Tell req
         | _ -> ()
@@ -274,6 +277,9 @@ type Supervisor() =
     inherit Actor()
     let mutable numberOfUsersCreated: int = 0
     let mutable parent: IActorRef = null
+
+    let mutable offlineUsersCount = 0
+    let offlineUsersPercent = 20.0
     
     let mutable userCountWithFollowersCreated = 0
     let mutable userCountWithTweetsPosted = 0
@@ -307,6 +313,8 @@ type Supervisor() =
             totalUsers <- init.TotalUsers
             parent <- x.Sender
 
+            offlineUsersCount <- percentOf(totalUsers, offlineUsersPercent)
+
             calculateUserCategoryCount()
             calculateDistributions()
 
@@ -327,15 +335,16 @@ type Supervisor() =
                                     clients.[id-1].Tell req)
             |> ignore
         | :? SimulateUserStatusUpdate as fake -> 
-            let randomId = random.Next(clients.Count)
-            clients.[randomId].Tell { Status = random.Next(2); }
-            x.Self.Tell { FakeSimulateStatusProp = 0; }
+            [1 .. offlineUsersCount]
+            |> List.iter(fun i ->   let randomId = random.Next(totalUsers)
+                                    clients.[randomId].Tell { IsOnline = false; })
         | :? CreateFollowersSuccess as fake -> 
             userCountWithFollowersCreated <- userCountWithFollowersCreated + 1
             if userCountWithFollowersCreated = totalUsers then
-                // x.Self.Tell { FakeSimulateStatusProp = 0; }
+                x.Self.Tell { FakeSimulateStatusProp = 0; }
                 printfn "-------------------------------------------------\n"
                 printfn "Total number of users: %d" totalUsers
+                printfn "Total number of users offline: %d" offlineUsersCount
                 printfn "Total number of celebrities: %d" celebrityCount
                 printfn "Total number of influencers: %d" influencerCount
                 printfn "Total number of common men: %d" commonMenCount
