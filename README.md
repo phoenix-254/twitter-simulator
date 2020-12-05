@@ -85,3 +85,7 @@ Offline users :- 15.0% = 1500 (Chosen randomly between 10% - 20% of total users)
 Total time taken :- 2073 Seconds
 
 Number of tweets handles per second :- 217
+
+Maximum number of users tested: 10000
+
+Note: Running more than 10K users is possible, but not tested since it takes more than 30 minutes.
